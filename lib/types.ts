@@ -5,6 +5,8 @@ export interface Trend {
   source: "Web Search" | "Twitter" | "Reddit" | "LinkedIn"
   relevanceScore: number
   velocity: "hot" | "rising" | "stable"
+  upvotes?: number
+  comments?: number
 }
 
 export interface GeneratedPost {

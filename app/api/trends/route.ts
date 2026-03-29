@@ -1,7 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { NextResponse } from "next/server"
 import { Trend } from "@/lib/types"
-import { fetchRedditPosts } from "@/lib/reddit"
+import { fetchRedditPosts, RedditPost } from "@/lib/reddit"
+import { supabase } from "@/lib/supabase/client"
 
 const client = new Anthropic()
 
@@ -52,8 +53,7 @@ Rules:
   return JSON.parse(jsonMatch[0])
 }
 
-async function getRedditTrends(): Promise<Trend[]> {
-  const posts = await fetchRedditPosts()
+async function getRedditTrends(posts: RedditPost[]): Promise<Trend[]> {
   if (posts.length === 0) return []
 
   const postList = posts
@@ -70,10 +70,11 @@ async function getRedditTrends(): Promise<Trend[]> {
 
 ${postList}
 
-Return ONLY a JSON array of 4 trend objects:
+Return ONLY a JSON array of 4 trend objects. Each object must include a "sourceIndex" field (1-based index of the Reddit post it maps to):
 [
   {
     "id": "rd-1",
+    "sourceIndex": 1,
     "title": "Short punchy trend title (max 8 words)",
     "summary": "2-3 sentence summary of the trend signal and why it matters for B2B sales",
     "source": "Reddit",
@@ -83,11 +84,11 @@ Return ONLY a JSON array of 4 trend objects:
 ]
 
 Rules:
-- id must be prefixed with "rd-" (e.g. "rd-1", "rd-2")
+- id must be prefixed with "rd-"
 - source must be "Reddit"
 - relevanceScore is 0-10 based on relevance to AI-powered B2B sales
 - velocity must be: "hot", "rising", or "stable"
-- Only include posts with genuine signal for B2B sales teams
+- sourceIndex links the trend back to the original Reddit post for engagement metrics
 - Return ONLY the JSON array, no other text`,
       },
     ],
@@ -96,14 +97,46 @@ Rules:
   const text = response.content[0].type === "text" ? response.content[0].text : ""
   const jsonMatch = text.match(/\[[\s\S]*\]/)
   if (!jsonMatch) return []
-  return JSON.parse(jsonMatch[0])
+
+  const raw = JSON.parse(jsonMatch[0])
+
+  // Attach engagement metrics from source Reddit post
+  return raw.map((t: any) => {
+    const sourcePost = posts[t.sourceIndex - 1]
+    return {
+      id: t.id,
+      title: t.title,
+      summary: t.summary,
+      source: t.source,
+      relevanceScore: t.relevanceScore,
+      velocity: t.velocity,
+      upvotes: sourcePost?.score,
+      comments: sourcePost?.num_comments,
+    } as Trend
+  })
+}
+
+async function saveTrends(trends: Trend[]) {
+  const rows = trends.map((t) => ({
+    title: t.title,
+    summary: t.summary,
+    source: t.source,
+    relevance_score: t.relevanceScore,
+    velocity: t.velocity,
+    upvotes: t.upvotes ?? null,
+    comments: t.comments ?? null,
+  }))
+
+  await supabase.from("trends").insert(rows)
 }
 
 export async function GET() {
   try {
+    const redditPosts = await fetchRedditPosts().catch(() => [])
+
     const [webTrends, redditTrends] = await Promise.allSettled([
       getWebSearchTrends(),
-      getRedditTrends(),
+      getRedditTrends(redditPosts),
     ])
 
     const trends: Trend[] = [
@@ -114,6 +147,9 @@ export async function GET() {
     if (trends.length === 0) {
       return NextResponse.json({ error: "Failed to fetch trends" }, { status: 500 })
     }
+
+    // Save to Supabase in background (don't block response)
+    saveTrends(trends).catch(console.error)
 
     return NextResponse.json({ trends })
   } catch (error) {

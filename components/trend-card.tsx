@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ArrowRight, Flame, TrendingUp, Minus } from "lucide-react"
+import { ArrowRight, Flame, TrendingUp, Minus, ArrowUp, MessageSquare } from "lucide-react"
 import { Trend } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -68,6 +68,22 @@ export function TrendCard({ trend }: TrendCardProps) {
             Score: {trend.relevanceScore}/10
           </Badge>
         </div>
+        {(trend.upvotes != null || trend.comments != null) && (
+          <div className="flex items-center gap-3 w-full text-xs text-muted-foreground">
+            {trend.upvotes != null && (
+              <span className="flex items-center gap-1">
+                <ArrowUp className="h-3 w-3" />
+                {trend.upvotes.toLocaleString()}
+              </span>
+            )}
+            {trend.comments != null && (
+              <span className="flex items-center gap-1">
+                <MessageSquare className="h-3 w-3" />
+                {trend.comments.toLocaleString()}
+              </span>
+            )}
+          </div>
+        )}
         <Button onClick={handleSelect} className="w-full" size="sm">
           Generate Posts
           <ArrowRight className="ml-2 h-4 w-4" />
