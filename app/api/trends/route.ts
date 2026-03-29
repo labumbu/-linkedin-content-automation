@@ -101,12 +101,9 @@ Rules:
 
 export async function GET() {
   try {
-    const hasRedditCreds =
-      process.env.REDDIT_CLIENT_ID && process.env.REDDIT_CLIENT_SECRET
-
     const [webTrends, redditTrends] = await Promise.allSettled([
       getWebSearchTrends(),
-      hasRedditCreds ? getRedditTrends() : Promise.resolve([]),
+      getRedditTrends(),
     ])
 
     const trends: Trend[] = [
