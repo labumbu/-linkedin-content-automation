@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Copy, Check, ThumbsUp, ThumbsDown } from "lucide-react"
 import { GeneratedPost } from "@/lib/types"
+import { supabase } from "@/lib/supabase/client"
 
 interface PostCardProps {
   post: GeneratedPost
@@ -19,6 +20,18 @@ export function PostCard({ post }: PostCardProps) {
     await navigator.clipboard.writeText(post.content)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleFeedback = async (value: "up" | "down") => {
+    const next = feedback === value ? null : value
+    setFeedback(next)
+
+    if (post.dbId) {
+      await supabase
+        .from("posts")
+        .update({ feedback: next })
+        .eq("id", post.dbId)
+    }
   }
 
   return (
@@ -39,7 +52,7 @@ export function PostCard({ post }: PostCardProps) {
             variant="ghost"
             size="icon"
             className={feedback === "up" ? "text-emerald-400" : "text-muted-foreground"}
-            onClick={() => setFeedback(feedback === "up" ? null : "up")}
+            onClick={() => handleFeedback("up")}
           >
             <ThumbsUp className="h-4 w-4" />
           </Button>
@@ -47,7 +60,7 @@ export function PostCard({ post }: PostCardProps) {
             variant="ghost"
             size="icon"
             className={feedback === "down" ? "text-red-400" : "text-muted-foreground"}
-            onClick={() => setFeedback(feedback === "down" ? null : "down")}
+            onClick={() => handleFeedback("down")}
           >
             <ThumbsDown className="h-4 w-4" />
           </Button>

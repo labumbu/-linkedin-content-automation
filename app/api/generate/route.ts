@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { NextRequest } from "next/server"
 import { GeneratedPost, Tone } from "@/lib/types"
+import { supabase } from "@/lib/supabase/client"
 
 const client = new Anthropic()
 
@@ -88,9 +89,27 @@ Return ONLY the JSON array. No explanation, no markdown code blocks, no other te
 
         const posts: GeneratedPost[] = JSON.parse(jsonMatch[0])
 
-        // Stream posts one by one for UX effect
+        // Save each post to Supabase and stream with dbId
         for (const post of posts) {
-          controller.enqueue(encoder.encode(JSON.stringify(post) + "\n"))
+          const { data } = await supabase
+            .from("posts")
+            .insert({
+              content: post.content,
+              character_count: post.characterCount,
+              trend_title: trend.title,
+              trend_summary: trend.summary,
+              language,
+              tone,
+            })
+            .select("id")
+            .single()
+
+          const enriched: GeneratedPost = {
+            ...post,
+            dbId: data?.id,
+          }
+
+          controller.enqueue(encoder.encode(JSON.stringify(enriched) + "\n"))
           await new Promise((r) => setTimeout(r, 400))
         }
 

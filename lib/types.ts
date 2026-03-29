@@ -9,6 +9,7 @@ export interface Trend {
 
 export interface GeneratedPost {
   id: string
+  dbId?: string   // Supabase UUID, set after saving
   content: string
   characterCount: number
 }
