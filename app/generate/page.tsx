@@ -17,7 +17,7 @@ import { Slider } from "@/components/ui/slider"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { PostCard } from "@/components/post-card"
-import { mockTrends } from "@/lib/mock-data"
+import { mockTrends } from "@/lib/mock-data" // fallback for dev/testing
 import { Trend, GeneratedPost, Language, Tone } from "@/lib/types"
 import { ArrowLeft, Loader2, RefreshCw, FileText } from "lucide-react"
 
@@ -37,10 +37,18 @@ function GenerateContent() {
   const [posts, setPosts] = useState<GeneratedPost[]>([])
 
   useEffect(() => {
-    if (trendId) {
-      const trend = mockTrends.find((t) => t.id === trendId)
-      if (trend) setSelectedTrend(trend)
+    if (!trendId) return
+    // Try sessionStorage first (real API trends), fall back to mock data
+    const stored = sessionStorage.getItem("selectedTrend")
+    if (stored) {
+      const trend: Trend = JSON.parse(stored)
+      if (trend.id === trendId) {
+        setSelectedTrend(trend)
+        return
+      }
     }
+    const trend = mockTrends.find((t) => t.id === trendId)
+    if (trend) setSelectedTrend(trend)
   }, [trendId])
 
   const generatePosts = async () => {

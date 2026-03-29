@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -32,7 +33,13 @@ function getScoreColor(score: number): string {
 }
 
 export function TrendCard({ trend }: TrendCardProps) {
+  const router = useRouter()
   const VelocityIcon = velocityConfig[trend.velocity].icon
+
+  const handleSelect = () => {
+    sessionStorage.setItem("selectedTrend", JSON.stringify(trend))
+    router.push(`/generate?trendId=${trend.id}`)
+  }
 
   return (
     <Card className="flex flex-col bg-card border-border hover:border-muted-foreground/50 transition-colors">
@@ -61,11 +68,9 @@ export function TrendCard({ trend }: TrendCardProps) {
             Score: {trend.relevanceScore}/10
           </Badge>
         </div>
-        <Button asChild className="w-full" size="sm">
-          <Link href={`/generate?trendId=${trend.id}`}>
-            Generate Posts
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Link>
+        <Button onClick={handleSelect} className="w-full" size="sm">
+          Generate Posts
+          <ArrowRight className="ml-2 h-4 w-4" />
         </Button>
       </CardFooter>
     </Card>
