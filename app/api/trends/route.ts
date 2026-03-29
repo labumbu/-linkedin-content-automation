@@ -3,10 +3,12 @@ import { NextResponse } from "next/server"
 import { Trend } from "@/lib/types"
 import { fetchRedditPosts, RedditPost } from "@/lib/reddit"
 import { supabase } from "@/lib/supabase/client"
+import { getSettings } from "@/lib/settings"
 
 const client = new Anthropic()
 
-async function getWebSearchTrends(): Promise<Trend[]> {
+async function getWebSearchTrends(topicClusters: string[]): Promise<Trend[]> {
+  const topicsStr = topicClusters.join(", ")
   const response = await client.messages.create({
     model: "claude-sonnet-4-5",
     max_tokens: 4096,
@@ -16,7 +18,7 @@ async function getWebSearchTrends(): Promise<Trend[]> {
         role: "user",
         content: `Search for the top 6 trending topics RIGHT NOW in AI sales, B2B sales technology, and sales automation in 2026.
 
-Search for topics related to: AI SDRs, signal-based selling, sales copilot tools, conversation intelligence, outbound automation, LinkedIn for B2B sales, revenue operations.
+Search for topics related to: ${topicsStr}.
 
 After searching, return ONLY a JSON array of exactly 6 trend objects:
 [
@@ -132,10 +134,18 @@ async function saveTrends(trends: Trend[]) {
 
 export async function GET() {
   try {
-    const redditPosts = await fetchRedditPosts().catch(() => [])
+    const [settings, redditPosts] = await Promise.all([
+      getSettings(),
+      fetchRedditPosts().catch(() => []),
+    ])
+
+    const topicClusters = settings?.topic_clusters ?? [
+      "AI SDR 2026", "sales copilot productivity", "signal-based selling",
+      "outbound automation", "B2B sales AI", "revenue operations",
+    ]
 
     const [webTrends, redditTrends] = await Promise.allSettled([
-      getWebSearchTrends(),
+      getWebSearchTrends(topicClusters),
       getRedditTrends(redditPosts),
     ])
 

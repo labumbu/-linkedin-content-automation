@@ -2,28 +2,26 @@ import Anthropic from "@anthropic-ai/sdk"
 import { NextRequest } from "next/server"
 import { GeneratedPost, Tone } from "@/lib/types"
 import { supabase } from "@/lib/supabase/client"
+import { getSettings, getKnowledgeBase, buildSystemPrompt } from "@/lib/settings"
 
 const client = new Anthropic()
 
-const HARVEY_VOICE = `You are Harvey's content AI. Harvey is an AI copilot for B2B sales teams that closes the full loop: prospecting, outreach, follow-up, and pipeline management in one place.
+const FALLBACK_SYSTEM_PROMPT = `You are Harvey's content AI. Harvey is an AI copilot for B2B sales teams that closes the full loop: prospecting, outreach, follow-up, and pipeline management in one place.
 
 Harvey's voice:
 - Direct and confident, zero fluff or filler
 - Specific with real data points and numbers
 - Challenges conventional thinking
-- Speaks like an operator who has been in the trenches, not a consultant
 - Short punchy sentences. Lots of white space for LinkedIn readability.
-- Never uses: "game-changer", "leverage", "synergy", "best practices", "exciting journey", "thrilled to announce", "in today's landscape"
-- Competitive edge: Harvey is "the full loop" — Salesloft does engagement, Apollo does data, Clay does enrichment, Lemlist does sequences. Harvey does all of it, connected.
+- Never uses: "game-changer", "leverage", "synergy", "best practices", "exciting journey"
+- Competitive edge: Harvey is "the full loop" vs Salesloft, Apollo, Clay, Lemlist.
 
 LinkedIn post format rules:
-- First 1-2 lines = killer hook that stops the scroll and makes people click "see more"
-- Short paragraphs, max 2-3 sentences each
-- Use line breaks generously between paragraphs
-- Bullet points with - or numbers for lists
-- 400-700 characters is the sweet spot
-- End with an open question OR a provocative standalone statement
-- NO hashtags. NO emojis unless they genuinely add value.`
+- First 1-2 lines = killer hook
+- Short paragraphs, max 2-3 sentences
+- 400-700 characters sweet spot
+- End with open question or provocative statement
+- NO hashtags.`
 
 const toneInstructions: Record<Tone, string> = {
   "Direct & Bold": "Be direct and bold. State strong opinions without hedging. Own the perspective.",
@@ -40,8 +38,19 @@ export async function POST(req: NextRequest) {
       ? "Write all posts in Russian. Maintain Harvey's direct, data-driven, operator voice — translated naturally, not literally."
       : "Write all posts in English."
 
+  // Build system prompt from settings + knowledge base
+  const [settings, knowledgeItems] = await Promise.all([
+    getSettings(),
+    getKnowledgeBase(),
+  ])
+
+  const systemPrompt = settings
+    ? await buildSystemPrompt(settings, knowledgeItems)
+    : FALLBACK_SYSTEM_PROMPT
+
+  const competitorList = settings?.competitors?.join(", ") ?? "Salesloft, Apollo, Clay, Lemlist"
   const competitorInstruction = includeCompetitor
-    ? "At least one post must include a competitive positioning angle — contrast Harvey's full-loop approach against Salesloft, Apollo, Clay, or Lemlist."
+    ? `At least one post must include a competitive positioning angle — contrast Harvey's full-loop approach against ${competitorList}.`
     : ""
 
   const encoder = new TextEncoder()
@@ -52,7 +61,7 @@ export async function POST(req: NextRequest) {
         const message = await client.messages.create({
           model: "claude-sonnet-4-5",
           max_tokens: 4096,
-          system: HARVEY_VOICE,
+          system: systemPrompt,
           messages: [
             {
               role: "user",
