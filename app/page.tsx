@@ -6,6 +6,7 @@ import { TrendCard } from "@/components/trend-card"
 import { TrendCardSkeleton } from "@/components/trend-card-skeleton"
 import { Trend } from "@/lib/types"
 import { RefreshCw } from "lucide-react"
+import { toast } from "@/hooks/use-toast"
 
 export default function DashboardPage() {
   const [trends, setTrends] = useState<Trend[]>([])
@@ -15,10 +16,15 @@ export default function DashboardPage() {
     setIsLoading(true)
     try {
       const res = await fetch("/api/trends")
+      if (!res.ok) throw new Error("Failed to fetch trends")
       const data = await res.json()
       if (data.trends) setTrends(data.trends)
-    } catch (error) {
-      console.error("Failed to fetch trends:", error)
+    } catch {
+      toast({
+        title: "Failed to load trends",
+        description: "Check your API key and try again.",
+        variant: "destructive",
+      })
     } finally {
       setIsLoading(false)
     }

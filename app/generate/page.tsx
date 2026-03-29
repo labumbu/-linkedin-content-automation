@@ -17,9 +17,9 @@ import { Slider } from "@/components/ui/slider"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { PostCard } from "@/components/post-card"
-import { mockTrends } from "@/lib/mock-data" // fallback for dev/testing
 import { Trend, GeneratedPost, Language, Tone } from "@/lib/types"
-import { ArrowLeft, Loader2, RefreshCw, FileText } from "lucide-react"
+import { ArrowLeft, Loader2, RefreshCw, FileText, LayoutDashboard } from "lucide-react"
+import { toast } from "@/hooks/use-toast"
 
 const tones: Tone[] = ["Direct & Bold", "Data-Driven", "Contrarian", "Storytelling"]
 const competitors = ["Salesloft", "Apollo", "Clay", "Lemlist"]
@@ -38,7 +38,6 @@ function GenerateContent() {
 
   useEffect(() => {
     if (!trendId) return
-    // Try sessionStorage first (real API trends), fall back to mock data
     const stored = sessionStorage.getItem("selectedTrend")
     if (stored) {
       const trend: Trend = JSON.parse(stored)
@@ -47,9 +46,25 @@ function GenerateContent() {
         return
       }
     }
-    const trend = mockTrends.find((t) => t.id === trendId)
-    if (trend) setSelectedTrend(trend)
   }, [trendId])
+
+  // Empty state — no topic selected
+  if (!trendId) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <div className="rounded-full bg-muted p-4 mb-4">
+          <LayoutDashboard className="h-8 w-8 text-muted-foreground" />
+        </div>
+        <h2 className="text-lg font-medium text-foreground mb-2">No topic selected</h2>
+        <p className="text-sm text-muted-foreground mb-6 max-w-sm">
+          Go to the dashboard, pick a trending topic, and click "Generate Posts".
+        </p>
+        <Button asChild>
+          <Link href="/">Browse Trends</Link>
+        </Button>
+      </div>
+    )
+  }
 
   const generatePosts = async () => {
     if (!selectedTrend) return
@@ -69,6 +84,8 @@ function GenerateContent() {
         }),
       })
 
+      if (!response.ok) throw new Error("Generation failed")
+
       const reader = response.body!.getReader()
       const decoder = new TextDecoder()
       let buffer = ""
@@ -85,13 +102,18 @@ function GenerateContent() {
           if (line.trim()) {
             try {
               const post = JSON.parse(line)
-              if (!post.error) setPosts((prev) => [...prev, post])
+              if (post.error) throw new Error(post.error)
+              setPosts((prev) => [...prev, post])
             } catch {}
           }
         }
       }
-    } catch (error) {
-      console.error("Generation failed:", error)
+    } catch {
+      toast({
+        title: "Generation failed",
+        description: "Something went wrong. Check your API key and try again.",
+        variant: "destructive",
+      })
     } finally {
       setIsGenerating(false)
     }
@@ -126,10 +148,11 @@ function GenerateContent() {
                   <p className="font-medium text-foreground">{selectedTrend.title}</p>
                 </div>
               ) : (
-                <div className="rounded-lg bg-muted p-4">
-                  <p className="text-sm text-muted-foreground">
-                    No topic selected. Pick one from the dashboard.
+                <div className="rounded-lg bg-muted p-4 animate-pulse">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">
+                    Selected Topic
                   </p>
+                  <p className="text-sm text-muted-foreground">Loading topic...</p>
                 </div>
               )}
 
@@ -238,7 +261,7 @@ function GenerateContent() {
                   No posts generated yet
                 </h3>
                 <p className="text-sm text-muted-foreground max-w-sm">
-                  Select a topic from the dashboard and configure your settings to generate LinkedIn posts.
+                  Configure your settings and click Generate Posts.
                 </p>
               </CardContent>
             </Card>
