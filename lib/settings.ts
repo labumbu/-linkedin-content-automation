@@ -7,6 +7,7 @@ export interface Settings {
   topic_clusters: string[]
   competitors: string[]
   default_language: string
+  ai_provider: "anthropic" | "openai"
 }
 
 export interface KnowledgeItem {

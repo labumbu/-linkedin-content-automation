@@ -164,6 +164,27 @@ export default function SettingsPage() {
         <TabsContent value="brand" className="space-y-6 mt-6">
           <Card className="bg-card border-border">
             <CardHeader>
+              <CardTitle className="text-base">AI Provider</CardTitle>
+              <CardDescription>Which AI to use for trend analysis and post generation.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Tabs
+                value={settings.ai_provider ?? "anthropic"}
+                onValueChange={(v) => setSettings({ ...settings, ai_provider: v as "anthropic" | "openai" })}
+              >
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="anthropic">Anthropic (Claude)</TabsTrigger>
+                  <TabsTrigger value="openai">OpenAI (GPT-4o)</TabsTrigger>
+                </TabsList>
+              </Tabs>
+              <p className="text-xs text-muted-foreground mt-2">
+                Set the corresponding API key in your <code className="bg-muted px-1 rounded">.env.local</code> file.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card border-border">
+            <CardHeader>
               <CardTitle className="text-base">Harvey Profile</CardTitle>
               <CardDescription>Who is Harvey? What does it do? This feeds directly into the generation prompt.</CardDescription>
             </CardHeader>
