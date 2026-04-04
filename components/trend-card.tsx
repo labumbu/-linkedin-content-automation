@@ -6,6 +6,7 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, Flame, TrendingUp, Minus, ArrowUp, MessageSquare, Clock } from "lucide-react"
+import { MessageCircle } from "lucide-react"
 import { Trend } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -39,6 +40,11 @@ export function TrendCard({ trend }: TrendCardProps) {
   const handleSelect = () => {
     sessionStorage.setItem("selectedTrend", JSON.stringify(trend))
     router.push(`/generate?trendId=${trend.id}`)
+  }
+
+  const handleComment = () => {
+    sessionStorage.setItem("selectedTrend", JSON.stringify(trend))
+    router.push(`/comments?tab=reddit&trendId=${trend.id}`)
   }
 
   return (
@@ -98,6 +104,12 @@ export function TrendCard({ trend }: TrendCardProps) {
           Generate Posts
           <ArrowRight className="ml-2 h-4 w-4" />
         </Button>
+        {trend.source === "Reddit" && (
+          <Button onClick={handleComment} variant="outline" className="w-full" size="sm">
+            <MessageCircle className="mr-2 h-4 w-4" />
+            Comment on Reddit
+          </Button>
+        )}
       </CardFooter>
     </Card>
   )

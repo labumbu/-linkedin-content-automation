@@ -60,6 +60,7 @@ Rules: id prefixed "rd-", relevanceScore 0-10, velocity: hot/rising/stable. Retu
     ...t,
     upvotes: posts[t.sourceIndex - 1]?.score,
     comments: posts[t.sourceIndex - 1]?.num_comments,
+    source_url: posts[t.sourceIndex - 1]?.permalink,
   }))
 }
 

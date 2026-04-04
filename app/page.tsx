@@ -11,6 +11,7 @@ import { toast } from "@/hooks/use-toast"
 export default function DashboardPage() {
   const [trends, setTrends] = useState<Trend[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [sourceFilter, setSourceFilter] = useState<string>("All")
 
   const fetchTrends = useCallback(async (force = false) => {
     setIsLoading(true)
@@ -56,10 +57,34 @@ export default function DashboardPage() {
         </Button>
       </div>
 
+      {!isLoading && trends.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {["All", "Web Search", "Reddit", "Twitter", "LinkedIn"].map((f) => {
+            const count = f === "All" ? trends.length : trends.filter((t) => t.source === f).length
+            if (f !== "All" && count === 0) return null
+            return (
+              <button
+                key={f}
+                onClick={() => setSourceFilter(f)}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                  sourceFilter === f
+                    ? "bg-foreground text-background border-foreground"
+                    : "bg-transparent text-muted-foreground border-border hover:border-muted-foreground"
+                }`}
+              >
+                {f} {count > 0 && <span className="ml-1 opacity-60">{count}</span>}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {isLoading
           ? Array.from({ length: 8 }).map((_, i) => <TrendCardSkeleton key={i} />)
-          : trends.map((trend) => <TrendCard key={trend.id} trend={trend} />)}
+          : (sourceFilter === "All" ? trends : trends.filter((t) => t.source === sourceFilter)).map((trend) => (
+              <TrendCard key={trend.id} trend={trend} />
+            ))}
       </div>
     </div>
   )
