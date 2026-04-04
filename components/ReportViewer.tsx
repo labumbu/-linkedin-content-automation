@@ -104,7 +104,7 @@ export function ReportViewer({ report, topic }: Props) {
       source: "Web Search",
       relevanceScore: 9,
       velocity: "hot",
-      source_url: null,
+      source_url: undefined,
     }
     sessionStorage.setItem("selectedTrend", JSON.stringify(syntheticTrend))
     router.push(`/generate?trendId=${syntheticTrend.id}`)
