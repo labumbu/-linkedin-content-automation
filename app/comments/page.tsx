@@ -182,6 +182,9 @@ function CommentsContent() {
                     onChange={(e) => setTrendUrl(e.target.value)}
                     placeholder="https://reddit.com/r/..."
                   />
+                  {trendId && !trendUrl && (
+                    <p className="text-xs text-muted-foreground">URL not available for this trend — paste it manually.</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm text-muted-foreground">Archetype</Label>

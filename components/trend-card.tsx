@@ -94,6 +94,17 @@ export function TrendCard({ trend }: TrendCardProps) {
             )}
           </div>
         )}
+        {trend.source === "Reddit" && trend.source_url && (
+          <a
+            href={trend.source_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-orange-400 hover:underline flex items-center gap-1 w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            View Reddit thread →
+          </a>
+        )}
         {trend.found_at && (
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <Clock className="h-3 w-3" />
