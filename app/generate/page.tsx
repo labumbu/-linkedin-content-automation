@@ -17,11 +17,12 @@ import { Slider } from "@/components/ui/slider"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { PostCard } from "@/components/post-card"
-import { Trend, GeneratedPost, Language, Tone } from "@/lib/types"
+import { Trend, GeneratedPost, Language, Tone, PostSize } from "@/lib/types"
+import { Textarea } from "@/components/ui/textarea"
 import { ArrowLeft, Loader2, RefreshCw, FileText, LayoutDashboard } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 
-const tones: Tone[] = ["Direct & Bold", "Data-Driven", "Contrarian", "Storytelling"]
+const tones: Tone[] = ["Direct & Bold", "Data-Driven", "Contrarian", "Storytelling", "HOW TO", "WHAT TO"]
 const competitors = ["Salesloft", "Apollo", "Clay", "Lemlist"]
 
 function GenerateContent() {
@@ -32,6 +33,8 @@ function GenerateContent() {
   const [language, setLanguage] = useState<Language>("EN")
   const [tone, setTone] = useState<Tone>("Direct & Bold")
   const [postCount, setPostCount] = useState([4])
+  const [postSize, setPostSize] = useState<PostSize>("Medium")
+  const [userGuidance, setUserGuidance] = useState("")
   const [includeCompetitor, setIncludeCompetitor] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [posts, setPosts] = useState<GeneratedPost[]>([])
@@ -80,6 +83,8 @@ function GenerateContent() {
           language,
           tone,
           postCount: postCount[0],
+          postSize,
+          userGuidance,
           includeCompetitor,
         }),
       })
@@ -182,6 +187,34 @@ function GenerateContent() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* Post Size */}
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Post Size</Label>
+                <Tabs value={postSize} onValueChange={(v) => setPostSize(v as PostSize)}>
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="Short">Short</TabsTrigger>
+                    <TabsTrigger value="Medium">Medium</TabsTrigger>
+                    <TabsTrigger value="Long">Long</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+                <p className="text-xs text-muted-foreground">
+                  {postSize === "Short" && "400–600 characters · punchy & concise"}
+                  {postSize === "Medium" && "700–1000 characters · balanced depth"}
+                  {postSize === "Long" && "1200–1800 characters · full story & data"}
+                </p>
+              </div>
+
+              {/* User Guidance */}
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">Additional guidance <span className="text-xs">(optional)</span></Label>
+                <Textarea
+                  value={userGuidance}
+                  onChange={(e) => setUserGuidance(e.target.value)}
+                  placeholder="e.g. mention our new pricing, focus on outbound SDRs, avoid mentioning AI..."
+                  className="resize-none text-sm min-h-[80px]"
+                />
               </div>
 
               {/* Post Count Slider */}

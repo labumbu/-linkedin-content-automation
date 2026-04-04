@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server"
-import { GeneratedPost, Tone } from "@/lib/types"
+import { GeneratedPost, Tone, PostSize } from "@/lib/types"
 import { supabase } from "@/lib/supabase/client"
 import { getSettings, getKnowledgeBase, buildSystemPrompt } from "@/lib/settings"
 import { generatePosts, AIProvider } from "@/lib/ai"
@@ -19,17 +19,25 @@ LinkedIn post format rules:
 - Short paragraphs, max 2-3 sentences
 - 400-700 characters sweet spot
 - End with open question or provocative statement
-- NO hashtags.`
+- Add up to 10 relevant hashtags on the last line`
 
 const toneInstructions: Record<Tone, string> = {
   "Direct & Bold": "Be direct and bold. State strong opinions without hedging. Own the perspective.",
   "Data-Driven": "Lead with specific data, statistics, and real numbers. Every claim should feel backed by evidence.",
   "Contrarian": "Challenge the conventional wisdom on this topic. Open with something like 'Hot take:' or 'Unpopular opinion:'. Disagree with the majority view and defend it.",
   "Storytelling": "Open with a brief specific story or scenario — a real situation a sales rep or founder would recognize. Make it personal before delivering the insight.",
+  "HOW TO": "Structure the post as a practical HOW TO guide optimized for LinkedIn virality. Open with a curiosity-gap hook in 1-2 short lines (e.g. 'How I [result] by doing [unexpected thing]' or 'Most [target audience] get this wrong. Here's how to fix it.'). Then deliver 3-5 numbered ultra-specific steps — each under 12 words. Use short paragraphs with line breaks. End with a simple question that invites a short answer. No fluff. Every step must be immediately actionable.",
+  "WHAT TO": "Structure the post as a WHAT TO do (and what NOT to do) guide optimized for LinkedIn saves and comments. Open with a bold contrarian or pattern-interrupt hook (e.g. 'Stop doing X. Here's what actually works.'). Present 3-5 clear DO / DON'T contrasts or a 'What to do when X' framework with specific, measurable recommendations. Each point must be concrete — no generic advice. Use white space aggressively. End with a polarizing or thought-provoking question that drives comments. Sentences under 12 words. No hashtags.",
+}
+
+const sizeInstructions: Record<PostSize, string> = {
+  "Short": "Keep each post between 400–600 characters. Punchy and concise.",
+  "Medium": "Keep each post between 700–1000 characters. Balanced depth and readability.",
+  "Long": "Keep each post between 1200–1800 characters. Go deep — tell a full story, add data, break down frameworks.",
 }
 
 export async function POST(req: NextRequest) {
-  const { trend, language, tone, postCount, includeCompetitor } = await req.json()
+  const { trend, language, tone, postCount, postSize, userGuidance, includeCompetitor } = await req.json()
 
   const [settings, knowledgeItems] = await Promise.all([
     getSettings(),
@@ -48,6 +56,10 @@ export async function POST(req: NextRequest) {
   const competitorInstruction = includeCompetitor
     ? `At least one post must include a competitive positioning angle — contrast Harvey's full-loop approach against ${competitorList}.`
     : ""
+  const sizeInstruction = sizeInstructions[(postSize as PostSize) ?? "Medium"]
+  const guidanceInstruction = userGuidance?.trim()
+    ? `\nAdditional instructions from the user: ${userGuidance.trim()}`
+    : ""
 
   const userPrompt = `Generate exactly ${postCount} LinkedIn posts about this trending topic:
 
@@ -55,13 +67,16 @@ Topic: "${trend.title}"
 Context: ${trend.summary}
 
 Tone instruction: ${toneInstructions[tone as Tone]}
+Size instruction: ${sizeInstruction}
 ${languageInstruction}
-${competitorInstruction}
+${competitorInstruction}${guidanceInstruction}
 
 Each post must take a different angle on the topic. No two posts should feel alike.
 
+After the post body, add a blank line followed by up to 10 relevant hashtags (e.g. #AISales #B2B #SalesAutomation). Hashtags must be relevant to the specific post content.
+
 Return ONLY a valid JSON array of ${postCount} objects:
-[{ "id": "1", "content": "full post text — use \\n for line breaks", "characterCount": 523 }]
+[{ "id": "1", "content": "full post text — use \\n for line breaks, hashtags on last line", "characterCount": 523 }]
 
 Return ONLY the JSON array. No explanation, no markdown code blocks, no other text.`
 

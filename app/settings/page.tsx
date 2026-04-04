@@ -238,7 +238,7 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex flex-wrap gap-2">
-                {settings.topic_clusters.map((topic, i) => (
+                {(settings.topic_clusters ?? []).map((topic, i) => (
                   <Badge key={i} variant="secondary" className="flex items-center gap-1 pr-1">
                     {topic}
                     <button onClick={() => removeTopic(i)} className="ml-1 hover:text-destructive">
@@ -268,7 +268,7 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex flex-wrap gap-2">
-                {settings.competitors.map((comp, i) => (
+                {(settings.competitors ?? []).map((comp, i) => (
                   <Badge key={i} variant="secondary" className="flex items-center gap-1 pr-1">
                     {comp}
                     <button onClick={() => removeCompetitor(i)} className="ml-1 hover:text-destructive">

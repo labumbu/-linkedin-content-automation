@@ -17,4 +17,5 @@ export interface GeneratedPost {
 }
 
 export type Language = "EN" | "RU"
-export type Tone = "Direct & Bold" | "Data-Driven" | "Contrarian" | "Storytelling"
+export type Tone = "Direct & Bold" | "Data-Driven" | "Contrarian" | "Storytelling" | "HOW TO" | "WHAT TO"
+export type PostSize = "Short" | "Medium" | "Long"

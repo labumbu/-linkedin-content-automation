@@ -45,7 +45,7 @@ export function TrendCard({ trend }: TrendCardProps) {
     <Card className="flex flex-col bg-card border-border hover:border-muted-foreground/50 transition-colors">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
-          <h3 className="font-semibold text-foreground leading-tight line-clamp-1">
+          <h3 className="font-semibold text-foreground leading-tight">
             {trend.title}
           </h3>
           <div className={cn("flex items-center gap-1", velocityConfig[trend.velocity].className)}>
@@ -55,7 +55,7 @@ export function TrendCard({ trend }: TrendCardProps) {
         </div>
       </CardHeader>
       <CardContent className="flex-1 pb-4">
-        <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed">
+        <p className="text-sm text-muted-foreground leading-relaxed">
           {trend.summary}
         </p>
       </CardContent>

@@ -41,6 +41,8 @@ export async function GET() {
       ...(redditTrends.status === "fulfilled" ? redditTrends.value : []),
     ]
 
+    if (webTrends.status === "rejected") console.error("webTrends error:", webTrends.reason)
+
     if (trends.length === 0) {
       return NextResponse.json({ error: "Failed to fetch trends" }, { status: 500 })
     }

@@ -8,7 +8,7 @@ export async function GET() {
     .eq("id", 1)
     .single()
 
-  if (error) return NextResponse.json({ error: "Failed to load settings" }, { status: 500 })
+  if (error) { console.error("Settings GET error:", error); return NextResponse.json({ error: "Failed to load settings" }, { status: 500 }) }
   return NextResponse.json(data)
 }
 

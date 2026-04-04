@@ -8,11 +8,11 @@ export async function fetchWebSearchTrends(topicClusters: string[]): Promise<Tre
   const response = await client.responses.create({
     model: "gpt-4o",
     tools: [{ type: "web_search_preview" } as any],
-    input: `Search for the top 6 trending topics RIGHT NOW in AI sales, B2B sales technology, and sales automation in 2026.
+    input: `Search for the top 20 trending topics RIGHT NOW in AI sales, B2B sales technology, and sales automation in 2026.
 
 Search for topics related to: ${topicClusters.join(", ")}.
 
-Return ONLY a JSON array of exactly 6 trend objects:
+Return ONLY a JSON array of exactly 20 trend objects:
 [{ "id": "ws-1", "title": "...", "summary": "...", "source": "Web Search", "relevanceScore": 8, "velocity": "hot" }]
 
 Rules: id prefixed "ws-", relevanceScore 0-10, velocity: hot/rising/stable. Return ONLY the JSON array.`,
