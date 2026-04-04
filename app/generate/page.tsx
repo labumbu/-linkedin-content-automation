@@ -23,6 +23,14 @@ import { ArrowLeft, Loader2, RefreshCw, FileText, LayoutDashboard } from "lucide
 import { toast } from "@/hooks/use-toast"
 
 const tones: Tone[] = ["Direct & Bold", "Data-Driven", "Contrarian", "Storytelling", "HOW TO", "WHAT TO"]
+const toneDescriptions: Record<Tone, string> = {
+  "Direct & Bold": "Strong opinions, no hedging. Own the take.",
+  "Data-Driven": "Lead with stats and numbers. Every claim backed by evidence.",
+  "Contrarian": "Challenge conventional wisdom. Open with a hot take.",
+  "Storytelling": "Open with a real scenario a sales rep would recognize.",
+  "HOW TO": "Curiosity-gap hook + 3–5 numbered actionable steps + closing question.",
+  "WHAT TO": "Bold contrarian hook + DO/DON'T contrasts + polarizing closing question.",
+}
 const competitors = ["Salesloft", "Apollo", "Clay", "Lemlist"]
 
 function GenerateContent() {
@@ -34,8 +42,17 @@ function GenerateContent() {
   const [tone, setTone] = useState<Tone>("Direct & Bold")
   const [postCount, setPostCount] = useState([4])
   const [postSize, setPostSize] = useState<PostSize>("Medium")
+  const [humanityLevel, setHumanityLevel] = useState([3])
   const [userGuidance, setUserGuidance] = useState("")
   const [includeCompetitor, setIncludeCompetitor] = useState(false)
+
+  const humanityLabels: Record<number, string> = {
+    1: "Polished & structured",
+    2: "Professional with warmth",
+    3: "Balanced",
+    4: "Conversational & personal",
+    5: "Raw & human",
+  }
   const [isGenerating, setIsGenerating] = useState(false)
   const [posts, setPosts] = useState<GeneratedPost[]>([])
 
@@ -84,6 +101,7 @@ function GenerateContent() {
           tone,
           postCount: postCount[0],
           postSize,
+          humanityLevel: humanityLevel[0],
           userGuidance,
           includeCompetitor,
         }),
@@ -189,6 +207,8 @@ function GenerateContent() {
                 </Select>
               </div>
 
+              <p className="text-xs text-muted-foreground -mt-4">{toneDescriptions[tone]}</p>
+
               {/* Post Size */}
               <div className="space-y-2">
                 <Label className="text-sm text-muted-foreground">Post Size</Label>
@@ -215,6 +235,25 @@ function GenerateContent() {
                   placeholder="e.g. mention our new pricing, focus on outbound SDRs, avoid mentioning AI..."
                   className="resize-none text-sm min-h-[80px]"
                 />
+              </div>
+
+              {/* Humanity Level */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm text-muted-foreground">Humanity Level</Label>
+                  <span className="text-xs text-muted-foreground">{humanityLabels[humanityLevel[0]]}</span>
+                </div>
+                <Slider
+                  value={humanityLevel}
+                  onValueChange={setHumanityLevel}
+                  min={1}
+                  max={5}
+                  step={1}
+                />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Polished</span>
+                  <span>Human</span>
+                </div>
               </div>
 
               {/* Post Count Slider */}

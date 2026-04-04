@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ArrowRight, Flame, TrendingUp, Minus, ArrowUp, MessageSquare } from "lucide-react"
+import { ArrowRight, Flame, TrendingUp, Minus, ArrowUp, MessageSquare, Clock } from "lucide-react"
 import { Trend } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
@@ -46,7 +46,11 @@ export function TrendCard({ trend }: TrendCardProps) {
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
           <h3 className="font-semibold text-foreground leading-tight">
-            {trend.title}
+            {trend.source_url ? (
+              <a href={trend.source_url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                {trend.title}
+              </a>
+            ) : trend.title}
           </h3>
           <div className={cn("flex items-center gap-1", velocityConfig[trend.velocity].className)}>
             <VelocityIcon className="h-4 w-4" />
@@ -82,6 +86,12 @@ export function TrendCard({ trend }: TrendCardProps) {
                 {trend.comments.toLocaleString()}
               </span>
             )}
+          </div>
+        )}
+        {trend.found_at && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Clock className="h-3 w-3" />
+            <span>Found {new Date(trend.found_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
           </div>
         )}
         <Button onClick={handleSelect} className="w-full" size="sm">

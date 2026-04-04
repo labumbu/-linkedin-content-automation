@@ -7,6 +7,8 @@ export interface Trend {
   velocity: "hot" | "rising" | "stable"
   upvotes?: number
   comments?: number
+  source_url?: string
+  found_at?: string
 }
 
 export interface GeneratedPost {
@@ -19,3 +21,4 @@ export interface GeneratedPost {
 export type Language = "EN" | "RU"
 export type Tone = "Direct & Bold" | "Data-Driven" | "Contrarian" | "Storytelling" | "HOW TO" | "WHAT TO"
 export type PostSize = "Short" | "Medium" | "Long"
+export type HumanityLevel = 1 | 2 | 3 | 4 | 5

@@ -12,10 +12,10 @@ export default function DashboardPage() {
   const [trends, setTrends] = useState<Trend[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  const fetchTrends = useCallback(async () => {
+  const fetchTrends = useCallback(async (force = false) => {
     setIsLoading(true)
     try {
-      const res = await fetch("/api/trends")
+      const res = await fetch(`/api/trends${force ? "?force=true" : ""}`)
       if (!res.ok) throw new Error("Failed to fetch trends")
       const data = await res.json()
       if (data.trends) setTrends(data.trends)
@@ -46,7 +46,7 @@ export default function DashboardPage() {
           </p>
         </div>
         <Button
-          onClick={fetchTrends}
+          onClick={() => fetchTrends(true)}
           disabled={isLoading}
           variant="outline"
           className="shrink-0"

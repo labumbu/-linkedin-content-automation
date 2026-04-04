@@ -8,6 +8,8 @@ export interface Settings {
   competitors: string[]
   default_language: string
   ai_provider: "anthropic" | "openai"
+  trend_sources?: string[]
+  trend_refresh_time?: string
 }
 
 export interface KnowledgeItem {
@@ -38,6 +40,20 @@ export async function getKnowledgeBase(): Promise<KnowledgeItem[]> {
 
   if (error) return []
   return data
+}
+
+let _cachedPrompt: string | null = null
+
+export async function getCachedSystemPrompt(): Promise<string> {
+  if (_cachedPrompt) return _cachedPrompt
+  const [settings, knowledgeItems] = await Promise.all([getSettings(), getKnowledgeBase()])
+  if (!settings) return ""
+  _cachedPrompt = await buildSystemPrompt(settings, knowledgeItems)
+  return _cachedPrompt
+}
+
+export function invalidateSystemPromptCache(): void {
+  _cachedPrompt = null
 }
 
 export async function buildSystemPrompt(settings: Settings, knowledgeItems: KnowledgeItem[]): Promise<string> {

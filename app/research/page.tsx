@@ -1,13 +1,20 @@
 "use client"
 
 import { useRef, useState } from "react"
-import { Search, FlaskConical } from "lucide-react"
+import { Search, FlaskConical, Link, FileText, PenLine, Copy, Check, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Slider } from "@/components/ui/slider"
 import { ResearchProgressBar } from "@/components/ResearchProgressBar"
 import { ReportViewer } from "@/components/ReportViewer"
 import { ReportJSON } from "@/lib/research-types"
+import { Tone } from "@/lib/types"
+import { toast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 
 const TEMPLATES = [
@@ -38,10 +45,30 @@ const TEMPLATES = [
   },
 ]
 
-type PageState = "select" | "running" | "complete"
+const tones: Tone[] = ["Direct & Bold", "Data-Driven", "Contrarian", "Storytelling", "HOW TO", "WHAT TO"]
+
+const humanityLabels: Record<number, string> = {
+  1: "Polished & structured",
+  2: "Professional with warmth",
+  3: "Balanced",
+  4: "Conversational & personal",
+  5: "Raw & human",
+}
+
+type ResearchState = "select" | "running" | "complete"
+
+interface SummaryResult {
+  title: string
+  summary: string
+  bullets: string[]
+  stats: string[]
+  sentiment: string
+  source_url: string
+}
 
 export default function ResearchPage() {
-  const [pageState, setPageState] = useState<PageState>("select")
+  // --- Research tab state ---
+  const [researchState, setResearchState] = useState<ResearchState>("select")
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
   const [customTopic, setCustomTopic] = useState("")
   const [activeTopic, setActiveTopic] = useState("")
@@ -49,11 +76,26 @@ export default function ResearchPage() {
   const [researchError, setResearchError] = useState<string | null>(null)
   const reportRef = useRef<HTMLDivElement>(null)
 
-  const selectedTemplate = TEMPLATES.find(t => t.id === selectedTemplateId)
-  const resolvedTopic = selectedTemplateId
-    ? (selectedTemplate?.label ?? "")
-    : customTopic.trim()
+  // --- Summarize tab state ---
+  const [summarizeMode, setSummarizeMode] = useState<"url" | "pdf">("url")
+  const [summarizeUrl, setSummarizeUrl] = useState("")
+  const [summarizing, setSummarizing] = useState(false)
+  const [summaryResult, setSummaryResult] = useState<SummaryResult | null>(null)
+  const pdfInputRef = useRef<HTMLInputElement>(null)
 
+  // --- Write Post tab state ---
+  const [postTopic, setPostTopic] = useState("")
+  const [postTone, setPostTone] = useState<Tone>("Direct & Bold")
+  const [postExperience, setPostExperience] = useState("")
+  const [postContext, setPostContext] = useState("")
+  const [postHumanity, setPostHumanity] = useState([3])
+  const [generatingPost, setGeneratingPost] = useState(false)
+  const [generatedPost, setGeneratedPost] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  // --- Research handlers ---
+  const selectedTemplate = TEMPLATES.find(t => t.id === selectedTemplateId)
+  const resolvedTopic = selectedTemplateId ? (selectedTemplate?.label ?? "") : customTopic.trim()
   const canStart = resolvedTopic.length > 0
 
   const handleStart = () => {
@@ -61,141 +103,355 @@ export default function ResearchPage() {
     setActiveTopic(resolvedTopic)
     setResearchError(null)
     setReport(null)
-    setPageState("running")
+    setResearchState("running")
   }
 
   const handleComplete = (completedReport: ReportJSON) => {
     setReport(completedReport)
-    setPageState("complete")
-    setTimeout(() => {
-      reportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
-    }, 100)
+    setResearchState("complete")
+    setTimeout(() => { reportRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }) }, 100)
   }
 
-  const handleError = (msg: string) => {
-    setResearchError(msg)
-    setPageState("select")
+  const handleError = (msg: string) => { setResearchError(msg); setResearchState("select") }
+  const handleReset = () => { setResearchState("select"); setReport(null); setResearchError(null); setSelectedTemplateId(null); setCustomTopic("") }
+
+  // --- Summarize handlers ---
+  const handleSummarizeUrl = async () => {
+    if (!summarizeUrl.trim()) return
+    setSummarizing(true)
+    setSummaryResult(null)
+    try {
+      const res = await fetch("/api/research/summarize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: summarizeUrl.trim() }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error)
+      setSummaryResult(await res.json())
+    } catch (err: any) {
+      toast({ title: "Failed to summarize", description: err.message, variant: "destructive" })
+    } finally {
+      setSummarizing(false)
+    }
   }
 
-  const handleReset = () => {
-    setPageState("select")
-    setReport(null)
-    setResearchError(null)
-    setSelectedTemplateId(null)
-    setCustomTopic("")
+  const handleSummarizePdf = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setSummarizing(true)
+    setSummaryResult(null)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const res = await fetch("/api/research/summarize", { method: "POST", body: formData })
+      if (!res.ok) throw new Error((await res.json()).error)
+      setSummaryResult(await res.json())
+    } catch (err: any) {
+      toast({ title: "Failed to summarize PDF", description: err.message, variant: "destructive" })
+    } finally {
+      setSummarizing(false)
+      if (pdfInputRef.current) pdfInputRef.current.value = ""
+    }
+  }
+
+  // --- Write Post handlers ---
+  const handleGeneratePost = async () => {
+    if (!postTopic.trim() || !postExperience.trim()) return
+    setGeneratingPost(true)
+    setGeneratedPost(null)
+    try {
+      const res = await fetch("/api/research/post", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: postTopic.trim(),
+          tone: postTone,
+          experience: postExperience.trim(),
+          context: postContext.trim(),
+          humanityLevel: postHumanity[0],
+        }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error)
+      const data = await res.json()
+      setGeneratedPost(data.content)
+    } catch (err: any) {
+      toast({ title: "Failed to generate post", description: err.message, variant: "destructive" })
+    } finally {
+      setGeneratingPost(false)
+    }
+  }
+
+  const handleCopy = () => {
+    if (!generatedPost) return
+    navigator.clipboard.writeText(generatedPost)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-8 space-y-8">
-      {/* Header */}
       <div className="space-y-1">
         <div className="flex items-center gap-2">
           <FlaskConical className="h-5 w-5 text-indigo-400" />
           <h1 className="text-2xl font-bold">Research Intelligence</h1>
         </div>
         <p className="text-muted-foreground text-sm">
-          Generate a 2–5 page evidence-grounded research report with named sources, credibility tiers, and a full bibliography.
-          Reports take 1–2 minutes.
+          Research topics, summarize articles & PDFs, or write posts from personal experience.
         </p>
       </div>
 
-      {/* Topic selection */}
-      {pageState === "select" && (
-        <div className="space-y-6">
-          {researchError && (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {researchError}
+      <Tabs defaultValue="research">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="research">Research Report</TabsTrigger>
+          <TabsTrigger value="summarize">Summarize</TabsTrigger>
+          <TabsTrigger value="post">Write Post</TabsTrigger>
+        </TabsList>
+
+        {/* ── Research Report Tab ── */}
+        <TabsContent value="research" className="mt-6">
+          {researchState === "select" && (
+            <div className="space-y-6">
+              {researchError && (
+                <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {researchError}
+                </div>
+              )}
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Choose a research template</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {TEMPLATES.map(template => (
+                    <Card
+                      key={template.id}
+                      onClick={() => { setSelectedTemplateId(template.id === selectedTemplateId ? null : template.id); setCustomTopic("") }}
+                      className={cn("cursor-pointer transition-all hover:border-indigo-500/50", selectedTemplateId === template.id ? "border-indigo-500 ring-1 ring-indigo-500/50" : "border-border")}
+                    >
+                      <CardHeader className="pb-1 pt-4 px-4">
+                        <CardTitle className="text-sm leading-snug">{template.label}</CardTitle>
+                      </CardHeader>
+                      <CardContent className="px-4 pb-4">
+                        <CardDescription className="text-xs leading-snug">{template.description}</CardDescription>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Or enter a custom topic</p>
+                <Textarea placeholder="e.g. AI impact on enterprise sales cycles in 2025–2026" value={customTopic} onChange={e => { setCustomTopic(e.target.value); if (e.target.value.trim()) setSelectedTemplateId(null) }} className="resize-none text-sm" rows={2} />
+              </div>
+              <Button onClick={handleStart} disabled={!canStart} size="lg" className="w-full sm:w-auto">
+                <Search className="mr-2 h-4 w-4" />Research This Topic
+              </Button>
+            </div>
+          )}
+          {researchState === "running" && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Researching</CardTitle>
+                <CardDescription className="text-sm truncate">{activeTopic}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ResearchProgressBar topic={activeTopic} onComplete={handleComplete} onError={handleError} />
+              </CardContent>
+            </Card>
+          )}
+          {researchState === "complete" && report && (
+            <div ref={reportRef} className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold">{report.topic}</h2>
+                  <p className="text-xs text-muted-foreground">Report complete</p>
+                </div>
+                <Button variant="ghost" size="sm" onClick={handleReset}>New Research</Button>
+              </div>
+              <ReportViewer report={report} topic={activeTopic} />
+            </div>
+          )}
+        </TabsContent>
+
+        {/* ── Summarize Tab ── */}
+        <TabsContent value="summarize" className="mt-6 space-y-6">
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="text-base">Summarize Article or PDF</CardTitle>
+              <CardDescription>Paste a URL or upload a PDF — get a structured summary with key takeaways and data points.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Tabs value={summarizeMode} onValueChange={(v) => setSummarizeMode(v as "url" | "pdf")}>
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="url"><Link className="mr-2 h-3 w-3" />URL</TabsTrigger>
+                  <TabsTrigger value="pdf"><FileText className="mr-2 h-3 w-3" />PDF</TabsTrigger>
+                </TabsList>
+              </Tabs>
+
+              {summarizeMode === "url" ? (
+                <div className="flex gap-2">
+                  <Input
+                    value={summarizeUrl}
+                    onChange={(e) => setSummarizeUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSummarizeUrl()}
+                    placeholder="https://techcrunch.com/..."
+                  />
+                  <Button onClick={handleSummarizeUrl} disabled={!summarizeUrl.trim() || summarizing}>
+                    {summarizing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Summarize"}
+                  </Button>
+                </div>
+              ) : (
+                <div>
+                  <input ref={pdfInputRef} type="file" accept=".pdf" className="hidden" onChange={handleSummarizePdf} />
+                  <Button variant="outline" onClick={() => pdfInputRef.current?.click()} disabled={summarizing}>
+                    {summarizing ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Summarizing...</> : <><FileText className="mr-2 h-4 w-4" />Choose PDF</>}
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {summarizing && !summaryResult && (
+            <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span className="text-sm">Summarizing...</span>
             </div>
           )}
 
-          <div className="space-y-2">
-            <p className="text-sm font-medium">Choose a research template</p>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {TEMPLATES.map(template => (
-                <Card
-                  key={template.id}
-                  onClick={() => {
-                    setSelectedTemplateId(template.id === selectedTemplateId ? null : template.id)
-                    setCustomTopic("")
-                  }}
-                  className={cn(
-                    "cursor-pointer transition-all hover:border-indigo-500/50",
-                    selectedTemplateId === template.id
-                      ? "border-indigo-500 ring-1 ring-indigo-500/50"
-                      : "border-border"
-                  )}
+          {summaryResult && (
+            <Card className="bg-card border-border">
+              <CardHeader>
+                <CardTitle className="text-base">{summaryResult.title}</CardTitle>
+                {summaryResult.source_url && summaryResult.source_url.startsWith("http") && (
+                  <CardDescription>
+                    <a href={summaryResult.source_url} target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground truncate block">
+                      {summaryResult.source_url}
+                    </a>
+                  </CardDescription>
+                )}
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground leading-relaxed">{summaryResult.summary}</p>
+                {summaryResult.bullets.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Key Takeaways</p>
+                    <ul className="space-y-1">
+                      {summaryResult.bullets.map((b, i) => (
+                        <li key={i} className="text-sm flex gap-2"><span className="text-muted-foreground shrink-0">·</span>{b}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {summaryResult.stats.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Notable Data Points</p>
+                    <ul className="space-y-1">
+                      {summaryResult.stats.map((s, i) => (
+                        <li key={i} className="text-sm flex gap-2"><span className="text-indigo-400 shrink-0">→</span>{s}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* ── Write Post Tab ── */}
+        <TabsContent value="post" className="mt-6">
+          <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
+            <Card className="bg-card border-border">
+              <CardHeader>
+                <CardTitle className="text-base">Post Settings</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="space-y-2">
+                  <Label className="text-sm text-muted-foreground">Topic</Label>
+                  <Input value={postTopic} onChange={(e) => setPostTopic(e.target.value)} placeholder="e.g. Why cold email still works in 2026" />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm text-muted-foreground">Tone</Label>
+                  <Select value={postTone} onValueChange={(v) => setPostTone(v as Tone)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {tones.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm text-muted-foreground">Your experience / story <span className="text-destructive">*</span></Label>
+                  <Textarea
+                    value={postExperience}
+                    onChange={(e) => setPostExperience(e.target.value)}
+                    placeholder="Paste your personal story, insight, or relevant experience here. The more specific, the better."
+                    className="resize-none text-sm min-h-[120px]"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm text-muted-foreground">Additional context <span className="text-xs">(optional)</span></Label>
+                  <Textarea
+                    value={postContext}
+                    onChange={(e) => setPostContext(e.target.value)}
+                    placeholder="Paste a news article, stat, LinkedIn post, or any context to weave in..."
+                    className="resize-none text-sm min-h-[80px]"
+                  />
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm text-muted-foreground">Humanity Level</Label>
+                    <span className="text-xs text-muted-foreground">{humanityLabels[postHumanity[0]]}</span>
+                  </div>
+                  <Slider value={postHumanity} onValueChange={setPostHumanity} min={1} max={5} step={1} />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Polished</span><span>Human</span>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={handleGeneratePost}
+                  disabled={generatingPost || !postTopic.trim() || !postExperience.trim()}
+                  className="w-full"
+                  size="lg"
                 >
-                  <CardHeader className="pb-1 pt-4 px-4">
-                    <CardTitle className="text-sm leading-snug">{template.label}</CardTitle>
+                  {generatingPost ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Writing...</> : <><PenLine className="mr-2 h-4 w-4" />Write Post</>}
+                </Button>
+              </CardContent>
+            </Card>
+
+            <div>
+              {generatingPost && !generatedPost && (
+                <div className="flex items-center justify-center h-full min-h-[200px] text-muted-foreground gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span className="text-sm">Writing your post...</span>
+                </div>
+              )}
+              {generatedPost && (
+                <Card className="bg-card border-border">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base">Generated Post</CardTitle>
+                      <Button variant="outline" size="sm" onClick={handleCopy}>
+                        {copied ? <><Check className="mr-2 h-3 w-3" />Copied</> : <><Copy className="mr-2 h-3 w-3" />Copy</>}
+                      </Button>
+                    </div>
                   </CardHeader>
-                  <CardContent className="px-4 pb-4">
-                    <CardDescription className="text-xs leading-snug">
-                      {template.description}
-                    </CardDescription>
+                  <CardContent>
+                    <pre className="text-sm whitespace-pre-wrap font-sans leading-relaxed text-foreground">{generatedPost}</pre>
                   </CardContent>
                 </Card>
-              ))}
+              )}
+              {!generatingPost && !generatedPost && (
+                <div className="flex items-center justify-center h-full min-h-[200px] border border-dashed border-border rounded-lg text-muted-foreground">
+                  <div className="text-center space-y-2">
+                    <PenLine className="h-8 w-8 mx-auto opacity-30" />
+                    <p className="text-sm">Fill in the form and click Write Post</p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-muted-foreground">Or enter a custom topic</p>
-            <Textarea
-              placeholder="e.g. AI impact on enterprise sales cycles in 2025–2026"
-              value={customTopic}
-              onChange={e => {
-                setCustomTopic(e.target.value)
-                if (e.target.value.trim()) setSelectedTemplateId(null)
-              }}
-              className="resize-none text-sm"
-              rows={2}
-            />
-          </div>
-
-          <Button
-            onClick={handleStart}
-            disabled={!canStart}
-            size="lg"
-            className="w-full sm:w-auto"
-          >
-            <Search className="mr-2 h-4 w-4" />
-            Research This Topic
-          </Button>
-        </div>
-      )}
-
-      {/* Progress */}
-      {pageState === "running" && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Researching</CardTitle>
-            <CardDescription className="text-sm truncate">{activeTopic}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ResearchProgressBar
-              topic={activeTopic}
-              onComplete={handleComplete}
-              onError={handleError}
-            />
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Report */}
-      {pageState === "complete" && report && (
-        <div ref={reportRef} className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold">{report.topic}</h2>
-              <p className="text-xs text-muted-foreground">Report complete</p>
-            </div>
-            <Button variant="ghost" size="sm" onClick={handleReset}>
-              New Research
-            </Button>
-          </div>
-          <ReportViewer report={report} topic={activeTopic} />
-        </div>
-      )}
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

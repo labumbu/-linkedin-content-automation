@@ -53,28 +53,27 @@ async function aiComplete(provider: "anthropic" | "openai", prompt: string, syst
 
 async function aiWebSearch(provider: "anthropic" | "openai", topic: string, queries: string[]): Promise<{ url: string; title: string }[]> {
   const queryList = queries.map((q, i) => `${i + 1}. ${q}`).join("\n")
-  const prompt = `Search for research and data on this topic: "${topic}"\n\nRun searches using these queries:\n${queryList}\n\nFind sources from analyst firms (Gartner, Forrester, McKinsey), vendor research reports, and credible trade press. Focus on quantitative data and statistics.`
+  const prompt = `Search for research and data on this topic: "${topic}"\n\nRun searches using these queries:\n${queryList}\n\nPrioritise sources from Gartner, Forrester, McKinsey, HBR, Forbes, WSJ, SaaStr, TechCrunch, VentureBeat. Avoid SEO aggregators and content farms. Focus on quantitative data and statistics.`
 
   if (provider === "openai") {
     const res = await getOpenAI().responses.create({
       model: "gpt-4o",
-      tools: [{ type: "web_search_preview" } as any],
+      tools: [{ type: "web_search_preview", search_context_size: "high" } as any],
       input: prompt,
     } as any)
 
+    // Extract URL citations from message output annotations
     const results: { url: string; title: string }[] = []
     for (const item of (res as any).output ?? []) {
-      if (item.type === "web_search_call") {
-        for (const r of item.results ?? []) {
-          if (r.url) results.push({ url: r.url, title: r.title ?? "" })
+      if (item.type === "message") {
+        for (const contentBlock of item.content ?? []) {
+          for (const annotation of contentBlock.annotations ?? []) {
+            if (annotation.type === "url_citation" && annotation.url) {
+              results.push({ url: annotation.url, title: annotation.title ?? "" })
+            }
+          }
         }
       }
-    }
-    // Also parse URLs from output_text if web_search_call results are empty
-    if (results.length === 0) {
-      const text: string = (res as any).output_text ?? ""
-      const urlMatches = text.matchAll(/https?:\/\/[^\s"')]+/g)
-      for (const m of urlMatches) results.push({ url: m[0], title: "" })
     }
     return results
   } else {

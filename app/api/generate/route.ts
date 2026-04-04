@@ -36,8 +36,16 @@ const sizeInstructions: Record<PostSize, string> = {
   "Long": "Keep each post between 1200–1800 characters. Go deep — tell a full story, add data, break down frameworks.",
 }
 
+const humanityInstructions: Record<number, string> = {
+  1: "Write in a polished, professional tone. Clean sentences, no contractions, structured flow.",
+  2: "Mostly professional but allow occasional contractions. Slightly warmer than corporate.",
+  3: "Balanced — clear and direct but sounds like a real person. Occasional contractions OK.",
+  4: "Conversational and personal. Use contractions freely. Slight informality. First-person feels genuine.",
+  5: "Raw and human. Write like you typed it yourself late at night. Short bursts. Real opinions. Imperfect but authentic. Avoid anything that sounds like AI copy.",
+}
+
 export async function POST(req: NextRequest) {
-  const { trend, language, tone, postCount, postSize, userGuidance, includeCompetitor } = await req.json()
+  const { trend, language, tone, postCount, postSize, humanityLevel, userGuidance, includeCompetitor } = await req.json()
 
   const [settings, knowledgeItems] = await Promise.all([
     getSettings(),
@@ -57,6 +65,7 @@ export async function POST(req: NextRequest) {
     ? `At least one post must include a competitive positioning angle — contrast Harvey's full-loop approach against ${competitorList}.`
     : ""
   const sizeInstruction = sizeInstructions[(postSize as PostSize) ?? "Medium"]
+  const humanityInstruction = humanityInstructions[humanityLevel ?? 3]
   const guidanceInstruction = userGuidance?.trim()
     ? `\nAdditional instructions from the user: ${userGuidance.trim()}`
     : ""
@@ -68,6 +77,7 @@ Context: ${trend.summary}
 
 Tone instruction: ${toneInstructions[tone as Tone]}
 Size instruction: ${sizeInstruction}
+Humanity instruction: ${humanityInstruction}
 ${languageInstruction}
 ${competitorInstruction}${guidanceInstruction}
 

@@ -10,19 +10,36 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { toast } from "@/hooks/use-toast"
-import { Loader2, Plus, X, Trash2, FileText, Globe, Save } from "lucide-react"
+import { Loader2, Plus, X, Trash2, FileText, Globe, Save, RefreshCw } from "lucide-react"
 import { Settings, KnowledgeItem } from "@/lib/settings"
+
+// Moscow is UTC+3
+function moscowTimeFromUtc(utcTime: string): string {
+  const [h, m] = utcTime.split(":").map(Number)
+  const moscowHour = (h + 3) % 24
+  return `${String(moscowHour).padStart(2, "0")}:${String(m).padStart(2, "0")}`
+}
+
+function utcTimeFromMoscow(moscowTime: string): string {
+  const [h, m] = moscowTime.split(":").map(Number)
+  const utcHour = (h - 3 + 24) % 24
+  return `${String(utcHour).padStart(2, "0")}:${String(m).padStart(2, "0")}`
+}
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [knowledge, setKnowledge] = useState<KnowledgeItem[]>([])
   const [saving, setSaving] = useState(false)
   const [loadingKb, setLoadingKb] = useState(false)
+  const [systemPrompt, setSystemPrompt] = useState<string | null>(null)
+  const [loadingPrompt, setLoadingPrompt] = useState(false)
 
   // Topic cluster input
   const [newTopic, setNewTopic] = useState("")
   // Competitor input
   const [newCompetitor, setNewCompetitor] = useState("")
+  // News source input
+  const [newSource, setNewSource] = useState("")
   // URL input
   const [newUrl, setNewUrl] = useState("")
   const [newUrlName, setNewUrlName] = useState("")
@@ -83,6 +100,17 @@ export default function SettingsPage() {
     setSettings({ ...settings, competitors: settings.competitors.filter((_, idx) => idx !== i) })
   }
 
+  const addSource = () => {
+    if (!newSource.trim() || !settings) return
+    setSettings({ ...settings, trend_sources: [...(settings.trend_sources ?? []), newSource.trim()] })
+    setNewSource("")
+  }
+
+  const removeSource = (i: number) => {
+    if (!settings) return
+    setSettings({ ...settings, trend_sources: (settings.trend_sources ?? []).filter((_, idx) => idx !== i) })
+  }
+
   const handleAddUrl = async () => {
     if (!newUrl.trim()) return
     setAddingUrl(true)
@@ -125,6 +153,19 @@ export default function SettingsPage() {
     }
   }
 
+  const handleLoadPrompt = async (rebuild = false) => {
+    setLoadingPrompt(true)
+    try {
+      const res = await fetch("/api/settings/prompt", { method: rebuild ? "POST" : "GET" })
+      const data = await res.json()
+      setSystemPrompt(data.prompt)
+    } catch {
+      toast({ title: "Failed to load prompt", variant: "destructive" })
+    } finally {
+      setLoadingPrompt(false)
+    }
+  }
+
   const handleDeleteKb = async (id: string) => {
     await fetch(`/api/knowledge/${id}`, { method: "DELETE" })
     setKnowledge((prev) => prev.filter((item) => item.id !== id))
@@ -154,10 +195,12 @@ export default function SettingsPage() {
       </div>
 
       <Tabs defaultValue="brand">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="brand">Brand</TabsTrigger>
           <TabsTrigger value="topics">Topics & Competitors</TabsTrigger>
+          <TabsTrigger value="sources">News Sources</TabsTrigger>
           <TabsTrigger value="knowledge">Knowledge Base</TabsTrigger>
+          <TabsTrigger value="prompt" onClick={() => { if (!systemPrompt) handleLoadPrompt() }}>System Prompt</TabsTrigger>
         </TabsList>
 
         {/* Brand Tab */}
@@ -290,6 +333,73 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="text-base">Daily Auto-Refresh Schedule</CardTitle>
+              <CardDescription>
+                Trends refresh automatically once per day. Set the time in Moscow time (UTC+3).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center gap-3">
+                <Input
+                  type="time"
+                  value={moscowTimeFromUtc(settings.trend_refresh_time ?? "06:00")}
+                  onChange={(e) => {
+                    const utc = utcTimeFromMoscow(e.target.value)
+                    setSettings({ ...settings, trend_refresh_time: utc })
+                  }}
+                  className="w-36"
+                />
+                <span className="text-sm text-muted-foreground">Moscow time</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Stored as UTC {settings.trend_refresh_time ?? "06:00"} · You can also refresh manually from the dashboard.
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* News Sources Tab */}
+        <TabsContent value="sources" className="space-y-6 mt-6">
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="text-base">Tracked News Sources</CardTitle>
+              <CardDescription>
+                Website URLs Harvey scrapes when refreshing trends and researching topics. Add sites you follow regularly.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                {(settings.trend_sources ?? []).map((source, i) => (
+                  <Badge key={i} variant="secondary" className="flex items-center gap-1 pr-1 max-w-xs">
+                    <span className="truncate">{source}</span>
+                    <button onClick={() => removeSource(i)} className="ml-1 hover:text-destructive shrink-0">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+                {(settings.trend_sources ?? []).length === 0 && (
+                  <p className="text-sm text-muted-foreground">No sources added yet.</p>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  value={newSource}
+                  onChange={(e) => setNewSource(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addSource()}
+                  placeholder="https://techcrunch.com"
+                />
+                <Button variant="outline" size="icon" onClick={addSource}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                These sites are scraped when refreshing trends and used as context in research reports.
+              </p>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Knowledge Base Tab */}
@@ -392,6 +502,39 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
           )}
+        </TabsContent>
+
+        {/* System Prompt Tab */}
+        <TabsContent value="prompt" className="space-y-6 mt-6">
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-base">Assembled System Prompt</CardTitle>
+                  <CardDescription>Auto-assembled from Brand, ICP, Voice Rules and Knowledge Base above.</CardDescription>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => handleLoadPrompt(true)} disabled={loadingPrompt}>
+                  {loadingPrompt ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                  Rebuild
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {loadingPrompt && !systemPrompt ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : systemPrompt ? (
+                <Textarea
+                  readOnly
+                  value={systemPrompt}
+                  className="font-mono text-xs min-h-[500px] bg-muted resize-none"
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">Click the tab to load the assembled prompt.</p>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

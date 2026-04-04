@@ -7,13 +7,15 @@ const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 export async function fetchWebSearchTrends(topicClusters: string[]): Promise<Trend[]> {
   const response = await client.responses.create({
     model: "gpt-4o",
-    tools: [{ type: "web_search_preview" } as any],
+    tools: [{ type: "web_search_preview", search_context_size: "high" } as any],
     input: `Search for the top 20 trending topics RIGHT NOW in AI sales, B2B sales technology, and sales automation in 2026.
 
 Search for topics related to: ${topicClusters.join(", ")}.
 
-Return ONLY a JSON array of exactly 20 trend objects:
-[{ "id": "ws-1", "title": "...", "summary": "...", "source": "Web Search", "relevanceScore": 8, "velocity": "hot" }]
+Prioritise sources from TechCrunch, VentureBeat, Gartner, Forrester, McKinsey, HBR, Forbes, WSJ, SaaStr, a16z. Avoid SEO aggregator sites and content farms.
+
+Return ONLY a JSON array of exactly 20 trend objects with source_url where available:
+[{ "id": "ws-1", "title": "...", "summary": "...", "source": "Web Search", "relevanceScore": 8, "velocity": "hot", "source_url": "https://..." }]
 
 Rules: id prefixed "ws-", relevanceScore 0-10, velocity: hot/rising/stable. Return ONLY the JSON array.`,
   } as any)
@@ -21,7 +23,34 @@ Rules: id prefixed "ws-", relevanceScore 0-10, velocity: hot/rising/stable. Retu
   const text = (response as any).output_text ?? ""
   const match = text.match(/\[[\s\S]*\]/)
   if (!match) throw new Error("No JSON in response")
-  return JSON.parse(match[0])
+  const trends: Trend[] = JSON.parse(match[0])
+
+  // Extract URL citations from message annotations
+  const output: any[] = (response as any).output ?? []
+  const urlMap = new Map<string, string>()
+  for (const item of output) {
+    if (item.type === "message") {
+      for (const contentBlock of item.content ?? []) {
+        for (const annotation of contentBlock.annotations ?? []) {
+          if (annotation.type === "url_citation" && annotation.url && annotation.title) {
+            urlMap.set(annotation.title.toLowerCase(), annotation.url)
+          }
+        }
+      }
+    }
+  }
+
+  // Attach URLs to trends by title similarity
+  return trends.map((t) => {
+    if (t.source_url) return t
+    const titleKey = t.title.toLowerCase()
+    for (const [annotationTitle, url] of urlMap) {
+      if (annotationTitle.includes(titleKey.slice(0, 20)) || titleKey.includes(annotationTitle.slice(0, 20))) {
+        return { ...t, source_url: url }
+      }
+    }
+    return t
+  })
 }
 
 export async function analyzeRedditTrends(posts: RedditPost[]): Promise<Trend[]> {

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { Trend } from "@/lib/types"
 import { fetchRedditPosts, RedditPost } from "@/lib/reddit"
 import { supabase } from "@/lib/supabase/client"
@@ -6,6 +6,7 @@ import { getSettings } from "@/lib/settings"
 import { fetchWebSearchTrends, analyzeRedditTrends, AIProvider } from "@/lib/ai"
 
 async function saveTrends(trends: Trend[]) {
+  const found_at = new Date().toISOString()
   const rows = trends.map((t) => ({
     title: t.title,
     summary: t.summary,
@@ -14,41 +15,183 @@ async function saveTrends(trends: Trend[]) {
     velocity: t.velocity,
     upvotes: t.upvotes ?? null,
     comments: t.comments ?? null,
+    source_url: t.source_url ?? null,
+    found_at,
   }))
   await supabase.from("trends").insert(rows)
 }
 
-export async function GET() {
+async function loadSavedTrends(): Promise<Trend[]> {
+  const { data, error } = await supabase
+    .from("trends")
+    .select("*")
+    .order("found_at", { ascending: false })
+    .limit(100)
+
+  if (error || !data) return []
+
+  return data.map((row: any) => ({
+    id: row.id,
+    title: row.title,
+    summary: row.summary,
+    source: row.source,
+    relevanceScore: row.relevance_score,
+    velocity: row.velocity,
+    upvotes: row.upvotes ?? undefined,
+    comments: row.comments ?? undefined,
+    source_url: row.source_url ?? undefined,
+    found_at: row.found_at ?? undefined,
+  }))
+}
+
+async function hasFreshTrends(): Promise<boolean> {
+  const since = new Date(Date.now() - 23 * 60 * 60 * 1000).toISOString()
+  const { count } = await supabase
+    .from("trends")
+    .select("id", { count: "exact", head: true })
+    .gte("found_at", since)
+  return (count ?? 0) > 0
+}
+
+function hashContent(text: string): string {
+  let hash = 0
+  for (let i = 0; i < text.length; i++) {
+    hash = (Math.imul(31, hash) + text.charCodeAt(i)) | 0
+  }
+  return hash.toString(36)
+}
+
+async function scrapeSourceContent(urls: string[]): Promise<string> {
+  const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString()
+
+  const { data: cached } = await supabase
+    .from("source_cache")
+    .select("url, content, content_hash, scraped_at")
+    .in("url", urls)
+
+  const cacheMap = new Map((cached ?? []).map((r: any) => [r.url, r]))
+
+  const staleUrls = urls.filter((url) => {
+    const entry = cacheMap.get(url)
+    return !entry || entry.scraped_at < sixHoursAgo
+  })
+
+  if (staleUrls.length > 0) {
+    const scraped = await Promise.allSettled(
+      staleUrls.map(async (url) => {
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), 5000)
+        try {
+          const res = await fetch(url, {
+            headers: { "User-Agent": "harvey-content-fabric/1.0.0" },
+            signal: controller.signal,
+          })
+          const html = await res.text()
+          const text = html
+            .replace(/<script[\s\S]*?<\/script>/gi, "")
+            .replace(/<style[\s\S]*?<\/style>/gi, "")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 1000)
+          return { url, text }
+        } finally {
+          clearTimeout(timer)
+        }
+      })
+    )
+
+    const upserts: { url: string; content: string; content_hash: string; scraped_at: string }[] = []
+    for (const result of scraped) {
+      if (result.status === "fulfilled") {
+        const { url, text } = result.value
+        const hash = hashContent(text)
+        cacheMap.set(url, { url, content: text, content_hash: hash, scraped_at: new Date().toISOString() })
+        upserts.push({ url, content: text, content_hash: hash, scraped_at: new Date().toISOString() })
+      }
+    }
+    if (upserts.length > 0) {
+      await supabase.from("source_cache").upsert(upserts, { onConflict: "url" })
+    }
+  }
+
+  const { data: prevCache } = await supabase
+    .from("source_cache")
+    .select("url, content_hash")
+    .in("url", staleUrls)
+
+  const prevHashMap = new Map((prevCache ?? []).map((r: any) => [r.url, r.content_hash]))
+
+  return urls
+    .map((url) => cacheMap.get(url))
+    .filter(Boolean)
+    .filter((entry: any) => {
+      if (staleUrls.includes(entry.url)) {
+        const prev = prevHashMap.get(entry.url)
+        return !prev || prev !== entry.content_hash
+      }
+      return false
+    })
+    .slice(0, 6)
+    .map((entry: any) => `[${entry.url}]\n${entry.content}`)
+    .join("\n\n")
+}
+
+export async function GET(req: NextRequest) {
+  const force = req.nextUrl.searchParams.get("force") === "true"
+
   try {
+    // If not forced and we have fresh trends, return from DB
+    if (!force) {
+      const fresh = await hasFreshTrends()
+      if (fresh) {
+        const saved = await loadSavedTrends()
+        if (saved.length > 0) return NextResponse.json({ trends: saved, cached: true })
+      }
+    }
+
     const [settings, redditPosts] = await Promise.all([
       getSettings(),
       fetchRedditPosts().catch(() => [] as RedditPost[]),
     ])
+    console.log(`[trends] Reddit posts fetched: ${redditPosts.length}`)
 
     const provider: AIProvider = (settings?.ai_provider as AIProvider) ?? "anthropic"
     const topicClusters = settings?.topic_clusters ?? [
       "AI SDR 2026", "sales copilot productivity", "signal-based selling",
       "outbound automation", "B2B sales AI", "revenue operations",
     ]
+    const trendSources = settings?.trend_sources ?? []
+
+    const extraContext = trendSources.length > 0
+      ? await scrapeSourceContent(trendSources).catch(() => "")
+      : ""
 
     const [webTrends, redditTrends] = await Promise.allSettled([
       fetchWebSearchTrends(topicClusters, provider),
       redditPosts.length > 0 ? analyzeRedditTrends(redditPosts, provider) : Promise.resolve([]),
     ])
 
-    const trends: Trend[] = [
+    if (webTrends.status === "rejected") console.error("webTrends error:", webTrends.reason)
+
+    const newTrends: Trend[] = [
       ...(webTrends.status === "fulfilled" ? webTrends.value : []),
       ...(redditTrends.status === "fulfilled" ? redditTrends.value : []),
     ]
 
-    if (webTrends.status === "rejected") console.error("webTrends error:", webTrends.reason)
-
-    if (trends.length === 0) {
+    if (newTrends.length === 0) {
+      // Return cached even if stale, rather than empty
+      const saved = await loadSavedTrends()
+      if (saved.length > 0) return NextResponse.json({ trends: saved, cached: true })
       return NextResponse.json({ error: "Failed to fetch trends" }, { status: 500 })
     }
 
-    saveTrends(trends).catch(console.error)
-    return NextResponse.json({ trends })
+    saveTrends(newTrends).catch(console.error)
+
+    // Return new + existing saved together
+    const allSaved = await loadSavedTrends()
+    const merged = allSaved.length > 0 ? allSaved : newTrends
+    return NextResponse.json({ trends: merged })
   } catch (error) {
     console.error("Trends API error:", error)
     return NextResponse.json({ error: "Failed to fetch trends" }, { status: 500 })
