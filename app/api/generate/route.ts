@@ -5,6 +5,7 @@ import { getSettings, getKnowledgeBase, buildSystemPrompt } from "@/lib/settings
 import { generatePosts, AIProvider } from "@/lib/ai"
 import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit"
 import { GenerateRequestSchema } from "@/lib/schemas"
+import { stripHtml } from "@/lib/html"
 
 const FALLBACK_SYSTEM_PROMPT = `You are Harvey's content AI. Harvey is an AI copilot for B2B sales teams that closes the full loop: prospecting, outreach, follow-up, and pipeline management in one place.
 
@@ -59,6 +60,25 @@ export async function POST(req: NextRequest) {
   }
   const { trend, language, tone, postCount, postSize, humanityLevel, userGuidance, includeCompetitor } = parsed.data
 
+  let articleContent = ""
+  if (trend.source_url && !trend.source_url.includes("reddit.com")) {
+    try {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 6000)
+      const res = await fetch(trend.source_url, {
+        headers: { "User-Agent": "harvey-content-fabric/1.0.0" },
+        signal: controller.signal,
+      })
+      clearTimeout(timer)
+      if (res.ok) {
+        const html = await res.text()
+        articleContent = stripHtml(html, 3000)
+      }
+    } catch {
+      // Fall back to summary only
+    }
+  }
+
   const [settings, knowledgeItems] = await Promise.all([
     getSettings(),
     getKnowledgeBase(),
@@ -85,7 +105,7 @@ export async function POST(req: NextRequest) {
   const userPrompt = `Generate exactly ${postCount} LinkedIn posts about this trending topic:
 
 Topic: "${trend.title}"
-Context: ${trend.summary}
+${articleContent ? `Full article content:\n${articleContent}` : `Context: ${trend.summary}`}
 
 Tone instruction: ${toneInstructions[tone as Tone]}
 Size instruction: ${sizeInstruction}
