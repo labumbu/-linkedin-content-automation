@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
       clearTimeout(timer)
       if (res.ok) {
         const html = await res.text()
-        articleContent = stripHtml(html, 3000)
+        articleContent = stripHtml(html, 15000)
       }
     } catch {
       // Fall back to summary only
