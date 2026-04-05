@@ -41,14 +41,14 @@ export async function analyzeRedditTrends(posts: RedditPost[]): Promise<Trend[]>
     max_tokens: 2048,
     messages: [{
       role: "user",
-      content: `Analyze these Reddit posts and identify the top 4 trends for AI-powered B2B sales teams:
+      content: `Summarize these Reddit posts as trends. For each post, write a clear and honest summary of what it is actually about — do not reframe or inject AI/sales language if it isn't there. Pick the top 4 most interesting posts.
 
 ${postList}
 
 Return ONLY a JSON array of 4 objects with "sourceIndex" (1-based):
-[{ "id": "rd-1", "sourceIndex": 1, "title": "...", "summary": "...", "source": "Reddit", "relevanceScore": 7, "velocity": "rising" }]
+[{ "id": "rd-1", "sourceIndex": 1, "title": "...", "summary": "one honest sentence describing what this post is actually about", "source": "Reddit", "relevanceScore": 7, "velocity": "rising" }]
 
-Rules: id prefixed "rd-", relevanceScore 0-10, velocity: hot/rising/stable. Return ONLY the JSON array.`,
+Rules: id prefixed "rd-", relevanceScore 0-10 (how relevant to B2B sales/SaaS practitioners), velocity: hot/rising/stable. Return ONLY the JSON array.`,
     }],
   })
 
