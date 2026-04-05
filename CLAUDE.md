@@ -86,7 +86,7 @@ CRON_SECRET=                # Any random string — used to secure /api/cron/tre
 
 - **posts** — generated LinkedIn posts: content, character_count, trend_title, trend_summary, language, tone, feedback ('up'|'down'|null)
 - **trends** — fetched trend signals: title, summary, source, relevance_score, velocity, upvotes, comments, source_url, found_at
-- **settings** — singleton row (id=1): harvey_profile, icp, voice_rules, topic_clusters[], competitors[], ai_provider, trend_sources[], trend_refresh_time
+- **settings** — singleton row (id=1): harvey_profile, icp, voice_rules, topic_clusters[], competitors[], ai_provider, trend_sources[], trend_refresh_time, subreddits[]
 - **knowledge_base** — uploaded PDFs and URLs: name, type ('pdf'|'url'), source_url, content (extracted text), created_at
 - **comments** — generated comments: platform ('reddit'|'linkedin'), archetype, original_content, generated_comment, word_count, trend_title, created_at
 - **source_cache** — scraped web content cache: url, content, content_hash, scraped_at (6h TTL)
@@ -94,7 +94,7 @@ CRON_SECRET=                # Any random string — used to secure /api/cron/tre
 ## Key Behaviours
 
 - **Provider selection**: `settings.ai_provider` ('anthropic' | 'openai') controls which provider is used everywhere. Every API route loads settings and passes provider to `lib/ai/index.ts` functions.
-- **Trends**: Web search runs via provider's search tool. Reddit public API often returns 0 posts (403 blocked from server IPs). Trends cached 23h in DB; `?force=true` bypasses cache.
+- **Trends**: Web search runs via provider's search tool (OpenAI: `web_search_preview` with `max_output_tokens: 8000` to prevent response truncation). Reddit public API often returns 0 posts (403 blocked from server IPs). Trends cached 23h in DB; `?force=true` bypasses cache. All trends stored without expiry or row limit. `saveTrends()` deduplicates within-batch only (no cross-day dedup). Dashboard "Web Search" filter shows all non-Reddit sources (Forbes, Gartner, SaaStr, etc.) — the `source` field stores the actual publication name, not the string "Web Search".
 - **Post generation**: Streams NDJSON (one JSON object per line, 400ms apart). Each post saved to Supabase mid-stream, `dbId` returned in stream.
 - **Comment generation**: Reddit uses 5 PRD archetypes + compliance rules. LinkedIn uses 6 PRD archetypes + compliance rules. Both return recommended archetype (★).
 - **System prompt**: Assembled from harvey_profile + icp + voice_rules + top 5 knowledge items (1500 char each) via `buildSystemPrompt()`. Cached in module-level variable; invalidated on Settings save.

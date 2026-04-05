@@ -59,8 +59,8 @@ export default function DashboardPage() {
 
       {!isLoading && trends.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap">
-          {["All", "Web Search", "Reddit", "Twitter", "LinkedIn"].map((f) => {
-            const count = f === "All" ? trends.length : trends.filter((t) => t.source === f).length
+          {["All", "Web Search", "Reddit"].map((f) => {
+            const count = f === "All" ? trends.length : f === "Web Search" ? trends.filter((t) => t.source !== "Reddit").length : trends.filter((t) => t.source === "Reddit").length
             if (f !== "All" && count === 0) return null
             return (
               <button
@@ -82,7 +82,7 @@ export default function DashboardPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {isLoading
           ? Array.from({ length: 8 }).map((_, i) => <TrendCardSkeleton key={i} />)
-          : (sourceFilter === "All" ? trends : trends.filter((t) => t.source === sourceFilter)).map((trend) => (
+          : (sourceFilter === "All" ? trends : sourceFilter === "Web Search" ? trends.filter((t) => t.source !== "Reddit") : trends.filter((t) => t.source === "Reddit")).map((trend) => (
               <TrendCard key={trend.id} trend={trend} />
             ))}
       </div>

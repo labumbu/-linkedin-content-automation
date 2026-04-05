@@ -7,6 +7,7 @@ const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 export async function fetchWebSearchTrends(topicClusters: string[]): Promise<Trend[]> {
   const response = await client.responses.create({
     model: "gpt-4o",
+    max_output_tokens: 8000,
     tools: [{ type: "web_search_preview", search_context_size: "high" } as any],
     input: `Search for the top 20 trending topics RIGHT NOW in AI sales, B2B sales technology, and sales automation in 2026.
 

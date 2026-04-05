@@ -13,20 +13,12 @@ function normalizeTitle(title: string): string {
 
 async function saveTrends(trends: Trend[]) {
   const found_at = new Date().toISOString()
-  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-
-  // Load titles from last 24h to deduplicate
-  const { data: recent } = await supabase
-    .from("trends")
-    .select("title")
-    .gte("found_at", since24h)
-
-  const existingTitles = new Set((recent ?? []).map((r: { title: string }) => normalizeTitle(r.title)))
+  const seenTitles = new Set<string>()
 
   const deduplicated = trends.filter((t) => {
     const normalized = normalizeTitle(t.title)
-    if (existingTitles.has(normalized)) return false
-    existingTitles.add(normalized) // prevent duplicates within the same batch
+    if (seenTitles.has(normalized)) return false
+    seenTitles.add(normalized)
     return true
   })
 
@@ -43,7 +35,8 @@ async function saveTrends(trends: Trend[]) {
     source_url: t.source_url ?? null,
     found_at,
   }))
-  await supabase.from("trends").insert(rows)
+  const { error } = await supabase.from("trends").insert(rows)
+  if (error) throw new Error(`Supabase insert failed: ${error.message}`)
 }
 
 async function loadSavedTrends(): Promise<Trend[]> {
@@ -51,7 +44,6 @@ async function loadSavedTrends(): Promise<Trend[]> {
     .from("trends")
     .select("*")
     .order("found_at", { ascending: false })
-    .limit(200)
 
   if (error || !data) return []
 
@@ -177,6 +169,7 @@ export async function GET(req: NextRequest) {
     const settings = await getSettings()
 
     const provider: AIProvider = (settings?.ai_provider as AIProvider) ?? "anthropic"
+    console.log("[trends] provider:", provider)
     const topicClusters = settings?.topic_clusters ?? [
       "AI SDR 2026", "sales copilot productivity", "signal-based selling",
       "outbound automation", "B2B sales AI", "revenue operations",
@@ -194,7 +187,8 @@ export async function GET(req: NextRequest) {
       redditPosts.length > 0 ? analyzeRedditTrends(redditPosts, provider) : Promise.resolve([]),
     ])
 
-    if (webTrends.status === "rejected") console.error("webTrends error:", webTrends.reason)
+    console.log("[trends] web:", webTrends.status === "fulfilled" ? webTrends.value.length + " trends" : "FAILED — " + webTrends.reason)
+    console.log("[trends] reddit:", redditTrends.status === "fulfilled" ? redditTrends.value.length + " trends" : "FAILED — " + redditTrends.reason)
 
     const newTrends: Trend[] = [
       ...(webTrends.status === "fulfilled" ? webTrends.value : []),
@@ -208,7 +202,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Failed to fetch trends" }, { status: 500 })
     }
 
-    saveTrends(newTrends).catch(console.error)
+    await saveTrends(newTrends).catch(console.error)
 
     // Return new + existing saved together
     const allSaved = await loadSavedTrends()
