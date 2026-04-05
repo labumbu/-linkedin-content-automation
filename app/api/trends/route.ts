@@ -176,7 +176,7 @@ export async function GET(req: NextRequest) {
 
     const [settings, redditPosts] = await Promise.all([
       getSettings(),
-      fetchRedditPosts().catch(() => [] as RedditPost[]),
+      fetchRedditPosts(settings?.subreddits ?? []).catch(() => [] as RedditPost[]),
     ])
     console.log(`[trends] Reddit posts fetched: ${redditPosts.length}`)
 

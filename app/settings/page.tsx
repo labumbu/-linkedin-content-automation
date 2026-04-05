@@ -40,6 +40,8 @@ export default function SettingsPage() {
   const [newCompetitor, setNewCompetitor] = useState("")
   // News source input
   const [newSource, setNewSource] = useState("")
+  // Subreddit input
+  const [newSubreddit, setNewSubreddit] = useState("")
   // URL input
   const [newUrl, setNewUrl] = useState("")
   const [newUrlName, setNewUrlName] = useState("")
@@ -109,6 +111,18 @@ export default function SettingsPage() {
   const removeSource = (i: number) => {
     if (!settings) return
     setSettings({ ...settings, trend_sources: (settings.trend_sources ?? []).filter((_, idx) => idx !== i) })
+  }
+
+  const addSubreddit = () => {
+    if (!newSubreddit.trim() || !settings) return
+    const name = newSubreddit.trim().replace(/^r\//, "")
+    setSettings({ ...settings, subreddits: [...(settings.subreddits ?? []), name] })
+    setNewSubreddit("")
+  }
+
+  const removeSubreddit = (i: number) => {
+    if (!settings) return
+    setSettings({ ...settings, subreddits: (settings.subreddits ?? []).filter((_, idx) => idx !== i) })
   }
 
   const handleAddUrl = async () => {
@@ -398,6 +412,41 @@ export default function SettingsPage() {
               <p className="text-xs text-muted-foreground">
                 These sites are scraped when refreshing trends and used as context in research reports.
               </p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="text-base">Reddit Subreddits</CardTitle>
+              <CardDescription>
+                Subreddits scanned for trending discussions. Enter names without the r/ prefix.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-2">
+                {(settings.subreddits ?? []).map((sub, i) => (
+                  <Badge key={i} variant="secondary" className="flex items-center gap-1 pr-1">
+                    <span className="text-orange-400">r/</span>{sub}
+                    <button onClick={() => removeSubreddit(i)} className="ml-1 hover:text-destructive">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+                {(settings.subreddits ?? []).length === 0 && (
+                  <p className="text-sm text-muted-foreground">No subreddits configured — defaults will be used: sales, SaaS, B2BMarketing, startups, Entrepreneur, artificial.</p>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  value={newSubreddit}
+                  onChange={(e) => setNewSubreddit(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addSubreddit()}
+                  placeholder="e.g. sales or r/sales"
+                />
+                <Button variant="outline" size="icon" onClick={addSubreddit}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

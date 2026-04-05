@@ -37,9 +37,10 @@ async function fetchSubreddit(subreddit: string): Promise<RedditPost[]> {
     }))
 }
 
-export async function fetchRedditPosts(): Promise<RedditPost[]> {
+export async function fetchRedditPosts(subreddits?: string[]): Promise<RedditPost[]> {
+  const list = subreddits && subreddits.length > 0 ? subreddits : SUBREDDITS
   const results = await Promise.allSettled(
-    SUBREDDITS.map((sub) => fetchSubreddit(sub))
+    list.map((sub) => fetchSubreddit(sub))
   )
 
   const posts = results

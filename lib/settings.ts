@@ -10,6 +10,7 @@ export interface Settings {
   ai_provider: "anthropic" | "openai"
   trend_sources?: string[]
   trend_refresh_time?: string
+  subreddits?: string[]
 }
 
 export interface KnowledgeItem {
