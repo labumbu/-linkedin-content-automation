@@ -37,6 +37,41 @@ async function fetchSubreddit(subreddit: string): Promise<RedditPost[]> {
     }))
 }
 
+export interface RedditThread {
+  title: string
+  body: string
+  score: number
+  topComments: { author: string; body: string; score: number }[]
+}
+
+export async function fetchRedditThread(url: string): Promise<RedditThread | null> {
+  try {
+    const clean = url.replace(/\/$/, "")
+    const res = await fetch(`${clean}.json?limit=10`, {
+      headers: { "User-Agent": USER_AGENT },
+      next: { revalidate: 0 },
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    const post = data[0]?.data?.children?.[0]?.data
+    if (!post) return null
+    const comments = (data[1]?.data?.children ?? [])
+      .map((c: any) => c.data)
+      .filter((c: any) => c.body && c.body !== "[deleted]" && c.body !== "[removed]")
+      .sort((a: any, b: any) => b.score - a.score)
+      .slice(0, 5)
+      .map((c: any) => ({ author: c.author, body: c.body.slice(0, 400), score: c.score }))
+    return {
+      title: post.title,
+      body: post.selftext?.slice(0, 1000) || "",
+      score: post.score,
+      topComments: comments,
+    }
+  } catch {
+    return null
+  }
+}
+
 export async function fetchRedditPosts(subreddits?: string[]): Promise<RedditPost[]> {
   const list = subreddits && subreddits.length > 0 ? subreddits : SUBREDDITS
   const results = await Promise.allSettled(

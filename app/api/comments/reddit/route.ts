@@ -3,6 +3,7 @@ import { getSettings, buildSystemPrompt, getKnowledgeBase } from "@/lib/settings
 import { generatePosts, AIProvider } from "@/lib/ai"
 import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit"
 import { RedditCommentRequestSchema } from "@/lib/schemas"
+import { fetchRedditThread } from "@/lib/reddit"
 
 const REDDIT_ARCHETYPES = {
   "Detailed Helper": {
@@ -47,7 +48,12 @@ export async function POST(req: NextRequest) {
 
   const sizeMap = { short: "50–100 words", medium: "100–200 words", long: "200–350 words" }
 
-  const [settings, knowledgeItems] = await Promise.all([getSettings(), getKnowledgeBase()])
+  const isRedditUrl = trendUrl && (trendUrl.includes("reddit.com") || trendUrl.includes("redd.it"))
+  const [settings, knowledgeItems, thread] = await Promise.all([
+    getSettings(),
+    getKnowledgeBase(),
+    isRedditUrl ? fetchRedditThread(trendUrl) : Promise.resolve(null),
+  ])
   const provider: AIProvider = (settings?.ai_provider as AIProvider) ?? "anthropic"
   const systemPrompt = settings ? await buildSystemPrompt(settings, knowledgeItems) : ""
 
@@ -57,11 +63,21 @@ export async function POST(req: NextRequest) {
 
   const autoMode = !archetype || archetype === "auto"
 
+  let threadContext = ""
+  if (thread) {
+    threadContext = `Original post:\n${thread.body || "(no post body — title only)"}`
+    if (thread.topComments.length > 0) {
+      threadContext += "\n\nTop comments:\n" + thread.topComments
+        .map((c, i) => `${i + 1}. u/${c.author} (${c.score} upvotes): ${c.body}`)
+        .join("\n\n")
+    }
+  }
+
   const userPrompt = `You are writing a Reddit comment for a B2B sales / AI tools thread.
 
 Thread topic: "${trendTitle}"
-${trendSummary ? `Thread summary: ${trendSummary}` : ""}
-${trendUrl ? `Thread URL: ${trendUrl}` : ""}
+${threadContext || (trendSummary ? `Thread summary: ${trendSummary}` : "")}
+${!thread && trendUrl ? `Thread URL: ${trendUrl}` : ""}
 
 ${autoMode
     ? `First, choose the BEST archetype for this thread from the list below. Return your choice as "recommendedArchetype".`
