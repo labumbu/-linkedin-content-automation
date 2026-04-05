@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSettings, buildSystemPrompt, getKnowledgeBase } from "@/lib/settings"
 import { generatePosts, AIProvider } from "@/lib/ai"
-import { supabase } from "@/lib/supabase/client"
 import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit"
 import { LinkedInCommentRequestSchema } from "@/lib/schemas"
 
@@ -49,7 +48,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.errors[0].message }, { status: 400 })
   }
-  const { postContent, archetype, save } = parsed.data
+  const { postContent, archetype } = parsed.data
 
   const [settings, knowledgeItems] = await Promise.all([getSettings(), getKnowledgeBase()])
   const provider: AIProvider = (settings?.ai_provider as AIProvider) ?? "anthropic"
@@ -111,18 +110,6 @@ Return ONLY valid JSON:
     const jsonMatch = text.match(/\{[\s\S]*\}/)
     if (!jsonMatch) throw new Error("No JSON in response")
     const result = JSON.parse(jsonMatch[0])
-
-    if (save) {
-      for (const variant of result.variants ?? []) {
-        await supabase.from("comments").insert({
-          platform: "linkedin",
-          archetype: variant.archetype,
-          original_content: postContent,
-          generated_comment: variant.body,
-          word_count: variant.wordCount,
-        }).catch(console.error)
-      }
-    }
 
     return NextResponse.json(result)
   } catch (err) {

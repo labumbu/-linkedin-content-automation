@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSettings, buildSystemPrompt, getKnowledgeBase } from "@/lib/settings"
 import { generatePosts, AIProvider } from "@/lib/ai"
-import { supabase } from "@/lib/supabase/client"
 import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit"
 import { RedditCommentRequestSchema } from "@/lib/schemas"
 
@@ -44,7 +43,9 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.errors[0].message }, { status: 400 })
   }
-  const { trendTitle, trendSummary, trendUrl, archetype, save } = parsed.data
+  const { trendTitle, trendSummary, trendUrl, archetype, noHarvey, commentSize } = parsed.data
+
+  const sizeMap = { short: "50–100 words", medium: "100–200 words", long: "200–350 words" }
 
   const [settings, knowledgeItems] = await Promise.all([getSettings(), getKnowledgeBase()])
   const provider: AIProvider = (settings?.ai_provider as AIProvider) ?? "anthropic"
@@ -73,12 +74,13 @@ ${archetypeList}
 REDDIT COMPLIANCE RULES (mandatory):
 - RD-001: NO direct links of any kind
 - RD-002: NO corporate language (leverage, synergize, scalable solution, game-changer, etc.)
-- RD-003: If you mention Harvey, add disclosure: "disclosure: I'm building this"
-- RD-004: If Harvey is mentioned, also list 2+ competitor alternatives (e.g. Salesloft, Apollo, Clay)
+${noHarvey
+  ? "- RD-003: Do NOT mention Harvey, any AI tool, or any specific product. Focus entirely on providing genuine value."
+  : "- RD-003: If you mention Harvey, add disclosure: \"disclosure: I'm building this\"\n- RD-004: If Harvey is mentioned, also list 2+ competitor alternatives (e.g. Salesloft, Apollo, Clay)\n- RD-008: Harvey mention must be <10% of total word count — focus on providing value"
+}
 - RD-005: NO emojis, NO hashtags
-- RD-006: Length must be 50–350 words
+- RD-006: Length must be ${sizeMap[commentSize]} — this overrides archetype word count defaults
 - RD-007: Use Reddit-native formatting: **bold** for key terms, numbered lists, line breaks between paragraphs
-- RD-008: Harvey mention must be <10% of total word count — focus on providing value
 
 Write in first person, casual peer tone. Sound like a practitioner sharing real experience, not a marketer.
 
@@ -95,17 +97,6 @@ Return ONLY valid JSON:
     const jsonMatch = text.match(/\{[\s\S]*\}/)
     if (!jsonMatch) throw new Error("No JSON in response")
     const result = JSON.parse(jsonMatch[0])
-
-    if (save) {
-      await supabase.from("comments").insert({
-        platform: "reddit",
-        archetype: result.archetype,
-        original_content: `${trendTitle}\n${trendSummary ?? ""}`,
-        generated_comment: result.comment,
-        word_count: result.wordCount,
-        trend_title: trendTitle,
-      }).catch(console.error)
-    }
 
     return NextResponse.json(result)
   } catch (err) {

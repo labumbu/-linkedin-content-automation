@@ -10,9 +10,11 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { Loader2, Copy, Check, Save, RefreshCw, Star, Trash2 } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 import { Trend } from "@/lib/types"
+import { supabase } from "@/lib/supabase/client"
 
 interface SavedComment {
   id: string
@@ -57,6 +59,8 @@ function CommentsContent() {
   const [trendSummary, setTrendSummary] = useState("")
   const [trendUrl, setTrendUrl] = useState("")
   const [redditArchetype, setRedditArchetype] = useState("Auto (AI picks)")
+  const [noHarvey, setNoHarvey] = useState(false)
+  const [commentSize, setCommentSize] = useState<"short" | "medium" | "long">("medium")
   const [generatingReddit, setGeneratingReddit] = useState(false)
   const [redditResult, setRedditResult] = useState<RedditResult | null>(null)
   const [copiedReddit, setCopiedReddit] = useState(false)
@@ -108,7 +112,7 @@ function CommentsContent() {
     }
   }, [trendId])
 
-  const generateRedditComment = async (save = false) => {
+  const generateRedditComment = async () => {
     if (!trendTitle.trim()) return
     setGeneratingReddit(true)
     setRedditResult(null)
@@ -121,13 +125,13 @@ function CommentsContent() {
           trendSummary,
           trendUrl,
           archetype: redditArchetype === "Auto (AI picks)" ? "auto" : redditArchetype,
-          save,
+          noHarvey,
+          commentSize,
         }),
       })
       if (!res.ok) throw new Error()
       const data = await res.json()
       setRedditResult(data)
-      if (save) toast({ title: "Comment saved" })
     } catch {
       toast({ title: "Generation failed", variant: "destructive" })
     } finally {
@@ -135,7 +139,21 @@ function CommentsContent() {
     }
   }
 
-  const generateLinkedinComments = async (save = false) => {
+  const handleSaveReddit = async () => {
+    if (!redditResult) return
+    const { error } = await supabase.from("comments").insert({
+      platform: "reddit",
+      archetype: redditResult.archetype,
+      original_content: `${trendTitle}\n${trendSummary}`,
+      generated_comment: redditResult.comment,
+      word_count: redditResult.wordCount,
+      trend_title: trendTitle,
+    })
+    if (error) toast({ title: "Failed to save", variant: "destructive" })
+    else toast({ title: "Comment saved" })
+  }
+
+  const generateLinkedinComments = async () => {
     if (!postContent.trim()) return
     setGeneratingLinkedin(true)
     setLinkedinResult(null)
@@ -146,18 +164,30 @@ function CommentsContent() {
         body: JSON.stringify({
           postContent,
           archetype: linkedinArchetype === "Auto (AI picks)" ? "auto" : linkedinArchetype,
-          save,
         }),
       })
       if (!res.ok) throw new Error()
       const data = await res.json()
       setLinkedinResult(data)
-      if (save) toast({ title: "Comments saved" })
     } catch {
       toast({ title: "Generation failed", variant: "destructive" })
     } finally {
       setGeneratingLinkedin(false)
     }
+  }
+
+  const handleSaveLinkedin = async () => {
+    if (!linkedinResult) return
+    for (const v of linkedinResult.variants ?? []) {
+      await supabase.from("comments").insert({
+        platform: "linkedin",
+        archetype: v.archetype,
+        original_content: postContent,
+        generated_comment: v.body,
+        word_count: v.wordCount,
+      }).catch(console.error)
+    }
+    toast({ title: "Comments saved" })
   }
 
   const copyReddit = () => {
@@ -240,8 +270,25 @@ function CommentsContent() {
                     <p className="text-xs text-muted-foreground">AI will pick the best archetype and highlight it</p>
                   )}
                 </div>
+                <div className="space-y-2">
+                  <Label className="text-sm text-muted-foreground">Comment Length</Label>
+                  <Select value={commentSize} onValueChange={(v) => setCommentSize(v as "short" | "medium" | "long")}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="short">Short (50–100 words)</SelectItem>
+                      <SelectItem value="medium">Medium (100–200 words)</SelectItem>
+                      <SelectItem value="long">Long (200–350 words)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center justify-between py-1">
+                  <Label className="text-sm text-muted-foreground">Don't mention Harvey</Label>
+                  <Switch checked={noHarvey} onCheckedChange={setNoHarvey} />
+                </div>
                 <Button
-                  onClick={() => generateRedditComment(false)}
+                  onClick={generateRedditComment}
                   disabled={generatingReddit || !trendTitle.trim()}
                   className="w-full"
                 >
@@ -273,13 +320,13 @@ function CommentsContent() {
                         <Badge variant="outline" className="text-xs">{redditResult.wordCount} words</Badge>
                       </div>
                       <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => generateRedditComment(false)} disabled={generatingReddit}>
+                        <Button variant="outline" size="sm" onClick={generateRedditComment} disabled={generatingReddit}>
                           <RefreshCw className="h-3 w-3 mr-1" />Regenerate
                         </Button>
                         <Button variant="outline" size="sm" onClick={copyReddit}>
                           {copiedReddit ? <><Check className="h-3 w-3 mr-1" />Copied</> : <><Copy className="h-3 w-3 mr-1" />Copy</>}
                         </Button>
-                        <Button size="sm" onClick={() => generateRedditComment(true)} disabled={generatingReddit}>
+                        <Button size="sm" onClick={handleSaveReddit}>
                           <Save className="h-3 w-3 mr-1" />Save
                         </Button>
                       </div>
@@ -338,7 +385,7 @@ function CommentsContent() {
                   )}
                 </div>
                 <Button
-                  onClick={() => generateLinkedinComments(false)}
+                  onClick={generateLinkedinComments}
                   disabled={generatingLinkedin || !postContent.trim()}
                   className="w-full"
                 >
@@ -362,10 +409,10 @@ function CommentsContent() {
                   <div className="flex items-center justify-between">
                     <h2 className="text-sm font-medium text-muted-foreground">{linkedinResult.variants?.length} variants generated</h2>
                     <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => generateLinkedinComments(false)} disabled={generatingLinkedin}>
+                      <Button variant="outline" size="sm" onClick={generateLinkedinComments} disabled={generatingLinkedin}>
                         <RefreshCw className="h-3 w-3 mr-1" />Regenerate
                       </Button>
-                      <Button size="sm" onClick={() => generateLinkedinComments(true)} disabled={generatingLinkedin}>
+                      <Button size="sm" onClick={handleSaveLinkedin}>
                         <Save className="h-3 w-3 mr-1" />Save All
                       </Button>
                     </div>

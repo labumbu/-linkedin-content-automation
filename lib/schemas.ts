@@ -27,7 +27,8 @@ export const RedditCommentRequestSchema = z.object({
   trendSummary: z.string().optional().default(""),
   trendUrl: z.string().optional().default(""),
   archetype: z.string().optional().default("auto"),
-  save: z.boolean().optional().default(false),
+  noHarvey: z.boolean().optional().default(false),
+  commentSize: z.enum(["short", "medium", "long"]).optional().default("medium"),
 })
 
 export const LinkedInCommentRequestSchema = z.object({
