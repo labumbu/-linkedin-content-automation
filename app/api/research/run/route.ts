@@ -4,6 +4,7 @@ import OpenAI from "openai"
 import { DATA_EXTRACTION_PROMPT, SOURCE_RANKING_PROMPT, SYNTHESIS_SYSTEM_PROMPT } from "@/lib/research-prompts"
 import { DataPoint, EvidenceDensity, ReportJSON, TierSourceCount } from "@/lib/research-types"
 import { getSettings } from "@/lib/settings"
+import { stripHtml } from "@/lib/html"
 
 // Vercel Pro required for full 5-stage pipeline (~30–60s)
 export const maxDuration = 60
@@ -110,19 +111,6 @@ function computeRecommendedSections(pages: 2 | 3 | 4 | 5): string[] {
   if (pages === 3) return ["executive_summary", "evidence_section", "conclusion"]
   if (pages === 4) return ["executive_summary", "comparison_section", "evidence_section", "conclusion"]
   return ["executive_summary", "comparison_section", "evidence_section", "gap_section", "conclusion"]
-}
-
-function stripHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/\s+/g, " ")
-    .trim()
 }
 
 async function fetchArticleContent(url: string): Promise<string> {

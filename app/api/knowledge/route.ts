@@ -2,19 +2,14 @@ import { NextRequest, NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase/client"
 import { getSettings } from "@/lib/settings"
 import { extractPdf, AIProvider } from "@/lib/ai"
+import { stripHtml } from "@/lib/html"
 
 async function extractFromUrl(url: string): Promise<string> {
   const res = await fetch(url, {
     headers: { "User-Agent": "harvey-content-fabric/1.0.0" },
   })
   const html = await res.text()
-  const text = html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-  return text.slice(0, 5000)
+  return stripHtml(html, 5000)
 }
 
 export async function POST(req: NextRequest) {

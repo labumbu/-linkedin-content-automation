@@ -4,10 +4,35 @@ import { fetchRedditPosts, RedditPost } from "@/lib/reddit"
 import { supabase } from "@/lib/supabase/client"
 import { getSettings } from "@/lib/settings"
 import { fetchWebSearchTrends, analyzeRedditTrends, AIProvider } from "@/lib/ai"
+import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit"
+import { stripHtml } from "@/lib/html"
+
+function normalizeTitle(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim()
+}
 
 async function saveTrends(trends: Trend[]) {
   const found_at = new Date().toISOString()
-  const rows = trends.map((t) => ({
+  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+
+  // Load titles from last 24h to deduplicate
+  const { data: recent } = await supabase
+    .from("trends")
+    .select("title")
+    .gte("found_at", since24h)
+
+  const existingTitles = new Set((recent ?? []).map((r: { title: string }) => normalizeTitle(r.title)))
+
+  const deduplicated = trends.filter((t) => {
+    const normalized = normalizeTitle(t.title)
+    if (existingTitles.has(normalized)) return false
+    existingTitles.add(normalized) // prevent duplicates within the same batch
+    return true
+  })
+
+  if (deduplicated.length === 0) return
+
+  const rows = deduplicated.map((t) => ({
     title: t.title,
     summary: t.summary,
     source: t.source,
@@ -21,12 +46,19 @@ async function saveTrends(trends: Trend[]) {
   await supabase.from("trends").insert(rows)
 }
 
-async function loadSavedTrends(): Promise<Trend[]> {
-  const { data, error } = await supabase
+async function loadSavedTrends(all = false): Promise<Trend[]> {
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  let query = supabase
     .from("trends")
     .select("*")
     .order("found_at", { ascending: false })
-    .limit(100)
+    .limit(40)
+
+  if (!all) {
+    query = query.gte("found_at", sevenDaysAgo)
+  }
+
+  const { data, error } = await query
 
   if (error || !data) return []
 
@@ -87,13 +119,7 @@ async function scrapeSourceContent(urls: string[]): Promise<string> {
             signal: controller.signal,
           })
           const html = await res.text()
-          const text = html
-            .replace(/<script[\s\S]*?<\/script>/gi, "")
-            .replace(/<style[\s\S]*?<\/style>/gi, "")
-            .replace(/<[^>]+>/g, " ")
-            .replace(/\s+/g, " ")
-            .trim()
-            .slice(0, 1000)
+          const text = stripHtml(html, 1000)
           return { url, text }
         } finally {
           clearTimeout(timer)
@@ -139,6 +165,11 @@ async function scrapeSourceContent(urls: string[]): Promise<string> {
 
 export async function GET(req: NextRequest) {
   const force = req.nextUrl.searchParams.get("force") === "true"
+
+  const rl = checkRateLimit(getRateLimitKey(req, "trends"), 5, 60_000)
+  if (!rl.allowed) {
+    return NextResponse.json({ error: `Rate limit exceeded. Try again in ${rl.retryAfterSeconds} seconds.` }, { status: 429 })
+  }
 
   try {
     // If not forced and we have fresh trends, return from DB

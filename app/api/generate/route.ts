@@ -1,8 +1,10 @@
-import { NextRequest } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { GeneratedPost, Tone, PostSize } from "@/lib/types"
 import { supabase } from "@/lib/supabase/client"
 import { getSettings, getKnowledgeBase, buildSystemPrompt } from "@/lib/settings"
 import { generatePosts, AIProvider } from "@/lib/ai"
+import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit"
+import { GenerateRequestSchema } from "@/lib/schemas"
 
 const FALLBACK_SYSTEM_PROMPT = `You are Harvey's content AI. Harvey is an AI copilot for B2B sales teams that closes the full loop: prospecting, outreach, follow-up, and pipeline management in one place.
 
@@ -45,7 +47,17 @@ const humanityInstructions: Record<number, string> = {
 }
 
 export async function POST(req: NextRequest) {
-  const { trend, language, tone, postCount, postSize, humanityLevel, userGuidance, includeCompetitor } = await req.json()
+  const rl = checkRateLimit(getRateLimitKey(req, "generate"), 10, 60_000)
+  if (!rl.allowed) {
+    return NextResponse.json({ error: `Rate limit exceeded. Try again in ${rl.retryAfterSeconds} seconds.` }, { status: 429 })
+  }
+
+  const body = await req.json()
+  const parsed = GenerateRequestSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.errors[0].message }, { status: 400 })
+  }
+  const { trend, language, tone, postCount, postSize, humanityLevel, userGuidance, includeCompetitor } = parsed.data
 
   const [settings, knowledgeItems] = await Promise.all([
     getSettings(),

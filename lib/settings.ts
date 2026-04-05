@@ -69,9 +69,21 @@ Voice & Style Rules:
 ${settings.voice_rules}`
 
   if (knowledgeItems.length > 0) {
-    const context = knowledgeItems
-      .slice(0, 5)
-      .map((item) => `--- ${item.name} ---\n${item.content.slice(0, 1500)}`)
+    const CHARS_PER_ITEM = 4000
+    const MAX_ITEMS = 10
+    const TOTAL_BUDGET = 20000
+
+    // Most recently added items first (array comes from DB ordered by created_at DESC)
+    const selectedItems = knowledgeItems.slice(0, MAX_ITEMS)
+    let totalChars = 0
+    const context = selectedItems
+      .filter((item) => {
+        const chars = Math.min(item.content.length, CHARS_PER_ITEM)
+        if (totalChars + chars > TOTAL_BUDGET) return false
+        totalChars += chars
+        return true
+      })
+      .map((item) => `--- ${item.name} ---\n${item.content.slice(0, CHARS_PER_ITEM)}`)
       .join("\n\n")
 
     prompt += `\n\nAdditional company context:\n${context}`

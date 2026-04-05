@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import { getSettings, buildSystemPrompt, getKnowledgeBase } from "@/lib/settings"
 import { generatePosts, AIProvider } from "@/lib/ai"
 import { supabase } from "@/lib/supabase/client"
+import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit"
+import { LinkedInCommentRequestSchema } from "@/lib/schemas"
 
 const LINKEDIN_ARCHETYPES = {
   "Add a Layer": {
@@ -37,11 +39,17 @@ const LINKEDIN_ARCHETYPES = {
 }
 
 export async function POST(req: NextRequest) {
-  const { postContent, archetype, save } = await req.json()
-
-  if (!postContent) {
-    return NextResponse.json({ error: "postContent is required" }, { status: 400 })
+  const rl = checkRateLimit(getRateLimitKey(req, "comments"), 20, 60_000)
+  if (!rl.allowed) {
+    return NextResponse.json({ error: `Rate limit exceeded. Try again in ${rl.retryAfterSeconds} seconds.` }, { status: 429 })
   }
+
+  const body = await req.json()
+  const parsed = LinkedInCommentRequestSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.errors[0].message }, { status: 400 })
+  }
+  const { postContent, archetype, save } = parsed.data
 
   const [settings, knowledgeItems] = await Promise.all([getSettings(), getKnowledgeBase()])
   const provider: AIProvider = (settings?.ai_provider as AIProvider) ?? "anthropic"

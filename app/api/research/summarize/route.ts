@@ -3,6 +3,8 @@ import Anthropic from "@anthropic-ai/sdk"
 import OpenAI from "openai"
 import { getSettings } from "@/lib/settings"
 import { extractPdf, AIProvider } from "@/lib/ai"
+import { ResearchSummarizeRequestSchema } from "@/lib/schemas"
+import { stripHtml } from "@/lib/html"
 
 let _anthropic: Anthropic | null = null
 function getAnthropic() {
@@ -14,17 +16,6 @@ let _openai: OpenAI | null = null
 function getOpenAI() {
   if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   return _openai
-}
-
-function stripHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/\s+/g, " ")
-    .trim()
 }
 
 async function fetchUrlContent(url: string): Promise<string> {
@@ -97,8 +88,12 @@ export async function POST(req: NextRequest) {
     }
   } else {
     // URL
-    const { url } = await req.json()
-    if (!url) return NextResponse.json({ error: "No URL provided" }, { status: 400 })
+    const body = await req.json()
+    const parsed = ResearchSummarizeRequestSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.errors[0].message }, { status: 400 })
+    }
+    const { url } = parsed.data
     try {
       rawContent = await fetchUrlContent(url)
       source = url
