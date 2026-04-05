@@ -174,11 +174,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const [settings, redditPosts] = await Promise.all([
-      getSettings(),
-      fetchRedditPosts(settings?.subreddits ?? []).catch(() => [] as RedditPost[]),
-    ])
-    console.log(`[trends] Reddit posts fetched: ${redditPosts.length}`)
+    const settings = await getSettings()
 
     const provider: AIProvider = (settings?.ai_provider as AIProvider) ?? "anthropic"
     const topicClusters = settings?.topic_clusters ?? [
@@ -187,9 +183,11 @@ export async function GET(req: NextRequest) {
     ]
     const trendSources = settings?.trend_sources ?? []
 
-    const extraContext = trendSources.length > 0
-      ? await scrapeSourceContent(trendSources).catch(() => "")
-      : ""
+    const [redditPosts, extraContext] = await Promise.all([
+      fetchRedditPosts(settings?.subreddits ?? []).catch(() => [] as RedditPost[]),
+      trendSources.length > 0 ? scrapeSourceContent(trendSources).catch(() => "") : Promise.resolve(""),
+    ])
+    console.log(`[trends] Reddit posts fetched: ${redditPosts.length}`)
 
     const [webTrends, redditTrends] = await Promise.allSettled([
       fetchWebSearchTrends(topicClusters, provider),
