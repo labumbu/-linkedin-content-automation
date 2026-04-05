@@ -46,19 +46,12 @@ async function saveTrends(trends: Trend[]) {
   await supabase.from("trends").insert(rows)
 }
 
-async function loadSavedTrends(all = false): Promise<Trend[]> {
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-  let query = supabase
+async function loadSavedTrends(): Promise<Trend[]> {
+  const { data, error } = await supabase
     .from("trends")
     .select("*")
     .order("found_at", { ascending: false })
-    .limit(40)
-
-  if (!all) {
-    query = query.gte("found_at", sevenDaysAgo)
-  }
-
-  const { data, error } = await query
+    .limit(200)
 
   if (error || !data) return []
 

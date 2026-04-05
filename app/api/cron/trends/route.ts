@@ -54,10 +54,6 @@ export async function GET(req: NextRequest) {
       await supabase.from("trends").insert(rows)
     }
 
-    // Archive trends older than 14 days
-    const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
-    await supabase.from("trends").delete().lt("found_at", fourteenDaysAgo)
-
     return NextResponse.json({ ok: true, count: trends.length })
   } catch (error) {
     console.error("Cron trends error:", error)
