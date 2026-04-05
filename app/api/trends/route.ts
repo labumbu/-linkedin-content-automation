@@ -15,12 +15,25 @@ async function saveTrends(trends: Trend[]) {
   const found_at = new Date().toISOString()
   const seenTitles = new Set<string>()
 
-  const deduplicated = trends.filter((t) => {
+  // Within-batch dedup
+  const batchDeduped = trends.filter((t) => {
     const normalized = normalizeTitle(t.title)
     if (seenTitles.has(normalized)) return false
     seenTitles.add(normalized)
     return true
   })
+
+  // For Reddit: skip titles already in DB (same posts stay "hot" for days)
+  const redditTitles = batchDeduped.filter(t => t.source === "Reddit").map(t => t.title)
+  const existingRedditTitles = new Set<string>()
+  if (redditTitles.length > 0) {
+    const { data } = await supabase.from("trends").select("title").eq("source", "Reddit").in("title", redditTitles)
+    for (const r of data ?? []) existingRedditTitles.add(r.title)
+  }
+
+  const deduplicated = batchDeduped.filter(t =>
+    t.source !== "Reddit" || !existingRedditTitles.has(t.title)
+  )
 
   if (deduplicated.length === 0) return
 
