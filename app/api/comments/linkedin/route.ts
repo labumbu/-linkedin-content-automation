@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSettings, buildSystemPrompt, getKnowledgeBase } from "@/lib/settings"
-import { generatePosts, AIProvider } from "@/lib/ai"
+import { generatePosts, resolveProvider, AIProvider } from "@/lib/ai"
 import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit"
 import { LinkedInCommentRequestSchema } from "@/lib/schemas"
 
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
   const { postContent, archetype } = parsed.data
 
   const [settings, knowledgeItems] = await Promise.all([getSettings(), getKnowledgeBase()])
-  const provider: AIProvider = (settings?.ai_provider as AIProvider) ?? "anthropic"
+  const provider = resolveProvider(settings?.ai_provider as AIProvider)
   const systemPrompt = settings ? await buildSystemPrompt(settings, knowledgeItems) : ""
 
   const archetypeList = Object.entries(LINKEDIN_ARCHETYPES)

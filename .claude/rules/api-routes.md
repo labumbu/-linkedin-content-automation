@@ -8,9 +8,9 @@ paths:
 ## Provider pattern (mandatory)
 Every route that calls AI must:
 1. Load settings: `const settings = await getSettings()`
-2. Resolve provider: `const provider: AIProvider = (settings?.ai_provider as AIProvider) ?? "anthropic"`
+2. Resolve provider: `const provider = resolveProvider(settings?.ai_provider as AIProvider)`
 3. Call `lib/ai/index.ts` functions with the resolved provider
-Never hardcode "anthropic" or "openai" in a route.
+Never hardcode "anthropic" or "openai" in a route. Never use `?? "anthropic"` — use `resolveProvider()` from `lib/ai`, which falls back based on which API key is actually set in the environment.
 
 ## Error handling
 - Always wrap the main logic in try/catch

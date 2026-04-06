@@ -105,12 +105,13 @@ CRON_SECRET=                # Any random string — used to secure /api/cron/tre
 
 Every route that calls AI follows this pattern:
 ```ts
+import { resolveProvider, AIProvider } from "@/lib/ai"
 const settings = await getSettings()
-const provider: AIProvider = (settings?.ai_provider as AIProvider) ?? "anthropic"
+const provider = resolveProvider(settings?.ai_provider as AIProvider)
 // then call lib/ai/index.ts functions with provider
 ```
 
-Never assume a single provider. Both must produce equivalent output.
+`resolveProvider()` checks which API keys are actually set and falls back gracefully — never hardcode `?? "anthropic"`. Never assume a single provider. Both must produce equivalent output.
 
 ## Dual-Provider AI Functions (lib/ai/index.ts)
 

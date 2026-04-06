@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getSettings } from "@/lib/settings"
 import { Trend } from "@/lib/types"
 import { supabase } from "@/lib/supabase/client"
-import { fetchWebSearchTrends, AIProvider } from "@/lib/ai"
+import { fetchWebSearchTrends, resolveProvider, AIProvider } from "@/lib/ai"
 
 export const maxDuration = 60
 
@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const settings = await getSettings()
-    const provider: AIProvider = (settings?.ai_provider as AIProvider) ?? "anthropic"
+    const provider = resolveProvider(settings?.ai_provider as AIProvider)
     const topicClusters = settings?.topic_clusters ?? [
       "AI SDR 2026", "sales copilot productivity", "signal-based selling",
       "outbound automation", "B2B sales AI", "revenue operations",

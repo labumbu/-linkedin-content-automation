@@ -3,7 +3,7 @@ import { Trend } from "@/lib/types"
 import { fetchRedditPosts, RedditPost } from "@/lib/reddit"
 import { supabase } from "@/lib/supabase/client"
 import { getSettings } from "@/lib/settings"
-import { fetchWebSearchTrends, analyzeRedditTrends, AIProvider } from "@/lib/ai"
+import { fetchWebSearchTrends, analyzeRedditTrends, resolveProvider, AIProvider } from "@/lib/ai"
 import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit"
 import { stripHtml } from "@/lib/html"
 
@@ -181,7 +181,7 @@ export async function GET(req: NextRequest) {
 
     const settings = await getSettings()
 
-    const provider: AIProvider = (settings?.ai_provider as AIProvider) ?? "anthropic"
+    const provider = resolveProvider(settings?.ai_provider as AIProvider)
     console.log("[trends] provider:", provider)
     const topicClusters = settings?.topic_clusters ?? [
       "AI SDR 2026", "sales copilot productivity", "signal-based selling",

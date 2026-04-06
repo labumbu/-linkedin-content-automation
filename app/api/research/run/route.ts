@@ -4,6 +4,7 @@ import OpenAI from "openai"
 import { DATA_EXTRACTION_PROMPT, SOURCE_RANKING_PROMPT, SYNTHESIS_SYSTEM_PROMPT } from "@/lib/research-prompts"
 import { DataPoint, EvidenceDensity, ReportJSON, TierSourceCount } from "@/lib/research-types"
 import { getSettings } from "@/lib/settings"
+import { resolveProvider } from "@/lib/ai"
 import { stripHtml } from "@/lib/html"
 
 // Vercel Pro required for full 5-stage pipeline (~30–60s)
@@ -19,13 +20,6 @@ let _openai: OpenAI | null = null
 function getOpenAI() {
   if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   return _openai
-}
-
-// Resolves which provider to actually use (same logic as lib/ai/index.ts)
-function resolveProvider(requested: "anthropic" | "openai"): "anthropic" | "openai" {
-  if (requested === "anthropic" && !process.env.ANTHROPIC_API_KEY) return "openai"
-  if (requested === "openai" && !process.env.OPENAI_API_KEY) return "anthropic"
-  return requested
 }
 
 // ── Provider-agnostic AI calls ─────────────────────────────────────────────
@@ -149,7 +143,7 @@ export async function POST(req: NextRequest) {
       try {
         // Load settings to determine provider
         const settings = await getSettings()
-        const provider = resolveProvider((settings?.ai_provider ?? "anthropic") as "anthropic" | "openai")
+        const provider = resolveProvider(settings?.ai_provider as "anthropic" | "openai")
 
         // ── Stage 1: Generate search queries ──────────────────────────────
         const queryText = await aiComplete(provider,

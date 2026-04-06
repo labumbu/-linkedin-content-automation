@@ -5,6 +5,13 @@ import * as openai from "./openai"
 
 export type AIProvider = "anthropic" | "openai"
 
+export function resolveProvider(requested?: AIProvider): AIProvider {
+  const preferred = requested ?? (process.env.OPENAI_API_KEY ? "openai" : "anthropic")
+  if (preferred === "anthropic" && !process.env.ANTHROPIC_API_KEY) return "openai"
+  if (preferred === "openai" && !process.env.OPENAI_API_KEY) return "anthropic"
+  return preferred
+}
+
 export async function fetchWebSearchTrends(topicClusters: string[], provider: AIProvider): Promise<Trend[]> {
   return provider === "openai"
     ? openai.fetchWebSearchTrends(topicClusters)

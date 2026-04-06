@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { GeneratedPost, Tone, PostSize } from "@/lib/types"
 import { supabase } from "@/lib/supabase/client"
 import { getSettings, getKnowledgeBase, buildSystemPrompt } from "@/lib/settings"
-import { generatePosts, AIProvider } from "@/lib/ai"
+import { generatePosts, resolveProvider, AIProvider } from "@/lib/ai"
 import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit"
 import { GenerateRequestSchema } from "@/lib/schemas"
 import { stripHtml } from "@/lib/html"
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
     getKnowledgeBase(),
   ])
 
-  const provider: AIProvider = (settings?.ai_provider as AIProvider) ?? "anthropic"
+  const provider = resolveProvider(settings?.ai_provider as AIProvider)
   const systemPrompt = settings
     ? await buildSystemPrompt(settings, knowledgeItems)
     : FALLBACK_SYSTEM_PROMPT

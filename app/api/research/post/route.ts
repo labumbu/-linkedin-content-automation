@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSettings, getKnowledgeBase, buildSystemPrompt } from "@/lib/settings"
-import { generatePosts, AIProvider } from "@/lib/ai"
+import { generatePosts, resolveProvider, AIProvider } from "@/lib/ai"
 import { Tone } from "@/lib/types"
 
 const toneInstructions: Record<Tone, string> = {
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   }
 
   const [settings, knowledgeItems] = await Promise.all([getSettings(), getKnowledgeBase()])
-  const provider: AIProvider = (settings?.ai_provider as AIProvider) ?? "anthropic"
+  const provider = resolveProvider(settings?.ai_provider as AIProvider)
   const systemPrompt = settings ? await buildSystemPrompt(settings, knowledgeItems) : ""
 
   const toneInstruction = toneInstructions[(tone as Tone) ?? "Direct & Bold"]

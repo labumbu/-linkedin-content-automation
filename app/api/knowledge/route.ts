@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase/client"
 import { getSettings } from "@/lib/settings"
-import { extractPdf, AIProvider } from "@/lib/ai"
+import { extractPdf, resolveProvider, AIProvider } from "@/lib/ai"
 import { stripHtml } from "@/lib/html"
 
 async function extractFromUrl(url: string): Promise<string> {
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
 
     try {
       const settings = await getSettings()
-      const provider: AIProvider = (settings?.ai_provider as AIProvider) ?? "anthropic"
+      const provider = resolveProvider(settings?.ai_provider as AIProvider)
       const content = await extractPdf(file, provider)
       const { data, error } = await supabase
         .from("knowledge_base")

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import OpenAI from "openai"
 import { getSettings } from "@/lib/settings"
-import { extractPdf, AIProvider } from "@/lib/ai"
+import { extractPdf, resolveProvider, AIProvider } from "@/lib/ai"
 import { ResearchSummarizeRequestSchema } from "@/lib/schemas"
 import { stripHtml } from "@/lib/html"
 
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
   const contentType = req.headers.get("content-type") ?? ""
 
   const settings = await getSettings()
-  const provider: AIProvider = (settings?.ai_provider as AIProvider) ?? "anthropic"
+  const provider = resolveProvider(settings?.ai_provider as AIProvider)
 
   let rawContent = ""
   let source = "unknown source"
