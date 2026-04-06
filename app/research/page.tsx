@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef, useState } from "react"
-import { Link, FileText, PenLine, Copy, Check, Loader2 } from "lucide-react"
+import { Link, FileText, PenLine, Copy, Check, Loader2, ArrowRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
+import { Switch } from "@/components/ui/switch"
 import { Tone } from "@/lib/types"
 import { toast } from "@/hooks/use-toast"
 
@@ -33,6 +34,9 @@ interface SummaryResult {
 }
 
 export default function ResearchPage() {
+  // --- Shared tab state ---
+  const [activeTab, setActiveTab] = useState("summarize")
+
   // --- Summarize tab state ---
   const [summarizeMode, setSummarizeMode] = useState<"url" | "pdf">("url")
   const [summarizeUrl, setSummarizeUrl] = useState("")
@@ -43,9 +47,11 @@ export default function ResearchPage() {
   // --- Write Post tab state ---
   const [postTopic, setPostTopic] = useState("")
   const [postTone, setPostTone] = useState<Tone>("Direct & Bold")
+  const [postSize, setPostSize] = useState<"Short" | "Medium" | "Long">("Medium")
   const [postExperience, setPostExperience] = useState("")
   const [postContext, setPostContext] = useState("")
   const [postHumanity, setPostHumanity] = useState([3])
+  const [includeHarvey, setIncludeHarvey] = useState(false)
   const [generatingPost, setGeneratingPost] = useState(false)
   const [generatedPost, setGeneratedPost] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -89,6 +95,24 @@ export default function ResearchPage() {
     }
   }
 
+  const prefillFromSummary = (result: SummaryResult) => {
+    const parts: string[] = []
+    if (result.bullets.length > 0) {
+      parts.push(result.bullets.map(b => `• ${b}`).join("\n"))
+    }
+    if (result.stats.length > 0) {
+      parts.push("Key data points:\n" + result.stats.map(s => `• ${s}`).join("\n"))
+    }
+    if (result.summary) {
+      parts.push(`Summary:\n${result.summary}`)
+    }
+    setPostExperience(parts.join("\n\n"))
+    setPostTopic(result.title || "")
+    setPostContext(result.source_url?.startsWith("http") ? `Source: ${result.source_url}` : "")
+    setGeneratedPost(null)
+    setActiveTab("post")
+  }
+
   // --- Write Post handlers ---
   const handleGeneratePost = async () => {
     if (!postTopic.trim() || !postExperience.trim()) return
@@ -104,6 +128,8 @@ export default function ResearchPage() {
           experience: postExperience.trim(),
           context: postContext.trim(),
           humanityLevel: postHumanity[0],
+          postSize,
+          includeHarvey,
         }),
       })
       if (!res.ok) throw new Error((await res.json()).error)
@@ -127,10 +153,10 @@ export default function ResearchPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground tracking-tight">Research</h1>
-        <p className="text-muted-foreground mt-1">Summarize articles & PDFs, or write posts from personal experience.</p>
+        <p className="text-muted-foreground mt-1">Summarize articles & PDFs, or write data-driven posts from research insights.</p>
       </div>
 
-      <Tabs defaultValue="summarize">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-2 max-w-xs">
           <TabsTrigger value="summarize">Summarize</TabsTrigger>
           <TabsTrigger value="post">Write Post</TabsTrigger>
@@ -215,6 +241,12 @@ export default function ResearchPage() {
                     </ul>
                   </div>
                 )}
+                <div className="pt-2 border-t border-border">
+                  <Button variant="outline" size="sm" onClick={() => prefillFromSummary(summaryResult)}>
+                    <ArrowRight className="mr-2 h-3 w-3" />
+                    Write Post from this
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -244,12 +276,30 @@ export default function ResearchPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground">Your experience / story <span className="text-destructive">*</span></Label>
+                  <Label className="text-sm text-muted-foreground">Post Size</Label>
+                  <Tabs value={postSize} onValueChange={(v) => setPostSize(v as "Short" | "Medium" | "Long")}>
+                    <TabsList className="grid w-full grid-cols-3">
+                      <TabsTrigger value="Short">Short</TabsTrigger>
+                      <TabsTrigger value="Medium">Medium</TabsTrigger>
+                      <TabsTrigger value="Long">Long</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                  <p className="text-xs text-muted-foreground">
+                    {postSize === "Short" && "400–600 characters · punchy & concise"}
+                    {postSize === "Medium" && "700–1000 characters · balanced depth"}
+                    {postSize === "Long" && "1200–1800 characters · full analysis & data"}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm text-muted-foreground">
+                    Research insights & data points <span className="text-destructive">*</span>
+                  </Label>
                   <Textarea
                     value={postExperience}
                     onChange={(e) => setPostExperience(e.target.value)}
-                    placeholder="Paste your personal story, insight, or relevant experience here. The more specific, the better."
-                    className="resize-none text-sm min-h-[120px]"
+                    placeholder="Paste key statistics, findings, data points, or research notes here. The more specific the numbers, the stronger the post."
+                    className="resize-none text-sm min-h-[140px]"
                   />
                 </div>
 
@@ -258,8 +308,8 @@ export default function ResearchPage() {
                   <Textarea
                     value={postContext}
                     onChange={(e) => setPostContext(e.target.value)}
-                    placeholder="Paste a news article, stat, LinkedIn post, or any context to weave in..."
-                    className="resize-none text-sm min-h-[80px]"
+                    placeholder="Source URL, extra context, angle to emphasize..."
+                    className="resize-none text-sm min-h-[60px]"
                   />
                 </div>
 
@@ -272,6 +322,13 @@ export default function ResearchPage() {
                   <div className="flex justify-between text-xs text-muted-foreground">
                     <span>Polished</span><span>Human</span>
                   </div>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Switch id="harvey" checked={includeHarvey} onCheckedChange={setIncludeHarvey} />
+                  <Label htmlFor="harvey" className="text-sm text-muted-foreground cursor-pointer">
+                    Include Harvey angle
+                  </Label>
                 </div>
 
                 <Button
@@ -311,7 +368,7 @@ export default function ResearchPage() {
                 <div className="flex items-center justify-center h-full min-h-[200px] border border-dashed border-border rounded-lg text-muted-foreground">
                   <div className="text-center space-y-2">
                     <PenLine className="h-8 w-8 mx-auto opacity-30" />
-                    <p className="text-sm">Fill in the form and click Write Post</p>
+                    <p className="text-sm">Fill in your research notes and click Write Post</p>
                   </div>
                 </div>
               )}

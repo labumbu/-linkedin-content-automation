@@ -7,9 +7,9 @@ const toneInstructions: Record<Tone, string> = {
   "Direct & Bold": "Be direct and bold. State strong opinions without hedging. Own the perspective.",
   "Data-Driven": "Lead with specific data, statistics, and real numbers. Every claim should feel backed by evidence.",
   "Contrarian": "Challenge the conventional wisdom on this topic. Open with something like 'Hot take:' or 'Unpopular opinion:'. Disagree with the majority view and defend it.",
-  "Storytelling": "Open with a brief specific story or scenario — a real situation a sales rep or founder would recognize. Make it personal before delivering the insight.",
-  "HOW TO": "Structure the post as a practical HOW TO guide optimized for LinkedIn virality. Open with a curiosity-gap hook in 1-2 short lines. Then deliver 3-5 numbered ultra-specific steps — each under 12 words. End with a simple question that invites a short answer. Every step must be immediately actionable.",
-  "WHAT TO": "Structure the post as a WHAT TO do (and what NOT to do) guide. Open with a bold contrarian hook. Present 3-5 clear DO / DON'T contrasts with specific, measurable recommendations. End with a polarizing question that drives comments. Sentences under 12 words.",
+  "Storytelling": "Open with a surprising data point or finding, then unpack the story behind the numbers.",
+  "HOW TO": "Structure the post as a practical HOW TO guide. Open with a curiosity-gap hook in 1-2 short lines. Then deliver 3-5 numbered ultra-specific steps — each under 12 words. End with a simple question that invites a short answer.",
+  "WHAT TO": "Structure the post as a WHAT TO do (and what NOT to do) guide. Open with a bold contrarian hook backed by data. Present 3-5 clear DO / DON'T contrasts with specific, measurable recommendations. End with a polarizing question that drives comments.",
 }
 
 const humanityInstructions: Record<number, string> = {
@@ -20,11 +20,17 @@ const humanityInstructions: Record<number, string> = {
   5: "Raw and human. Write like you typed it yourself late at night. Short bursts. Real opinions. Imperfect but authentic. Avoid anything that sounds like AI copy.",
 }
 
+const sizeInstructions: Record<string, string> = {
+  "Short": "Keep the post between 400–600 characters. Punchy and concise.",
+  "Medium": "Keep the post between 700–1000 characters. Balanced depth and readability.",
+  "Long": "Keep the post between 1200–1800 characters. Go deep — data, frameworks, analysis.",
+}
+
 export async function POST(req: NextRequest) {
-  const { topic, tone, experience, context, humanityLevel = 3 } = await req.json()
+  const { topic, tone, experience, context, humanityLevel = 3, postSize = "Medium", includeHarvey = false } = await req.json()
 
   if (!topic || !experience) {
-    return NextResponse.json({ error: "topic and experience are required" }, { status: 400 })
+    return NextResponse.json({ error: "topic and research notes are required" }, { status: 400 })
   }
 
   const [settings, knowledgeItems] = await Promise.all([getSettings(), getKnowledgeBase()])
@@ -33,21 +39,35 @@ export async function POST(req: NextRequest) {
 
   const toneInstruction = toneInstructions[(tone as Tone) ?? "Direct & Bold"]
   const humanityInstruction = humanityInstructions[Math.min(5, Math.max(1, Math.round(humanityLevel)))]
+  const sizeInstruction = sizeInstructions[postSize] ?? sizeInstructions["Medium"]
+
   const contextBlock = context?.trim()
-    ? `\n\nAdditional context to weave in:\n${context.trim()}`
+    ? `\n\nAdditional context:\n${context.trim()}`
     : ""
 
-  const userPrompt = `Write a single LinkedIn post on this topic: "${topic}"
+  const harveyInstruction = includeHarvey
+    ? `\nHarvey angle: Weave in one natural connection to Harvey's value proposition — Harvey is an AI copilot for B2B sales teams that closes the full loop: prospecting, outreach, follow-up, and pipeline in one place. Position it as a solution to the problem the data highlights. One mention max. Do NOT make Harvey the focus of the post.`
+    : `\nDo NOT mention Harvey, any specific AI tool, or any company by name. Pure data and insight only.`
 
-The post must be grounded in this personal experience:
+  const userPrompt = `Write a single data-driven LinkedIn post on this topic: "${topic}"
+
+Ground the post in these research insights, data points, and observations:
 ${experience}
 ${contextBlock}
 
-Tone instruction: ${toneInstruction}
-Humanity instruction: ${humanityInstruction}
+Writing rules:
+- Open with a striking statistic, surprising finding, or counterintuitive pattern — not an opinion, a FACT
+- Every claim must feel backed by evidence, data, or a recognizable industry pattern
+- Use specific numbers wherever possible: percentages, dollar amounts, timeframes, ratios
+- Replace vague language ("many companies", "most teams") with specific observations
+- Short paragraphs. One idea per paragraph. Aggressive white space for LinkedIn readability.
+- End with a provocative insight or question that challenges conventional thinking
 
-Write in first person. The post should feel like it came from lived experience, not generic advice.
-Use LinkedIn best practices: strong hook in the first 1-2 lines, short paragraphs, white space, closing question or statement.
+Tone instruction: ${toneInstruction}
+Size instruction: ${sizeInstruction}
+Humanity instruction: ${humanityInstruction}
+${harveyInstruction}
+
 End with up to 8 relevant hashtags on the last line.
 
 Return ONLY the post text. No explanation, no JSON, no preamble.`
