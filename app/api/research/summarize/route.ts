@@ -97,14 +97,17 @@ async function summarizePdfWithAnthropic(file: File, source: string): Promise<st
 async function summarizePdfWithOpenAI(file: File, source: string): Promise<string> {
   const arrayBuffer = await file.arrayBuffer()
   const base64 = Buffer.from(arrayBuffer).toString("base64")
-  const res = await getOpenAI().responses.create({
+  const res = await getOpenAI().chat.completions.create({
     model: "gpt-4o",
-    input: [
-      { type: "input_file", filename: file.name, file_data: `data:application/pdf;base64,${base64}` },
-      { type: "input_text", text: SUMMARIZE_PDF_PROMPT(source) },
-    ],
-  } as any)
-  return (res as any).output_text ?? ""
+    messages: [{
+      role: "user",
+      content: [
+        { type: "file", file: { filename: file.name, file_data: `data:application/pdf;base64,${base64}` } } as any,
+        { type: "text", text: SUMMARIZE_PDF_PROMPT(source) },
+      ],
+    }],
+  })
+  return res.choices[0]?.message?.content ?? ""
 }
 
 export async function POST(req: NextRequest) {

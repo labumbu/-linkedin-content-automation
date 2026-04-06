@@ -104,13 +104,16 @@ export async function extractPdfWithOpenAI(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer()
   const base64 = Buffer.from(arrayBuffer).toString("base64")
 
-  const response = await client.responses.create({
+  const response = await client.chat.completions.create({
     model: "gpt-4o",
-    input: [
-      { type: "input_file", filename: file.name, file_data: `data:application/pdf;base64,${base64}` },
-      { type: "input_text", text: "Extract all key information: company description, product features, value proposition, target customers, competitive advantages, messaging. Return plain text only." },
-    ],
-  } as any)
+    messages: [{
+      role: "user",
+      content: [
+        { type: "file", file: { filename: file.name, file_data: `data:application/pdf;base64,${base64}` } } as any,
+        { type: "text", text: "Extract all key information: company description, product features, value proposition, target customers, competitive advantages, messaging. Return plain text only." },
+      ],
+    }],
+  })
 
-  return (response as any).output_text ?? ""
+  return response.choices[0]?.message?.content ?? ""
 }
