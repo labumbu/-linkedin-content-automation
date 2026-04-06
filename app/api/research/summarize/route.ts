@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import OpenAI from "openai"
 import { getSettings } from "@/lib/settings"
-import { extractPdf, resolveProvider, AIProvider } from "@/lib/ai"
+import { resolveProvider, AIProvider } from "@/lib/ai"
 import { ResearchSummarizeRequestSchema } from "@/lib/schemas"
 import { stripHtml } from "@/lib/html"
 
@@ -48,6 +48,17 @@ Return ONLY a valid JSON object. No preamble, no markdown.
 Content:
 ${content}`
 
+const SUMMARIZE_PDF_PROMPT = (source: string) => `Summarize this PDF document from ${source}.
+
+Extract and return a JSON object with these fields:
+- title: string — the document title or topic
+- summary: string — a clear 2–3 paragraph summary in plain language
+- bullets: string[] — 4–6 key takeaways as concise bullet points
+- stats: string[] — up to 5 notable statistics or data points (empty array if none found)
+- sentiment: "positive" | "neutral" | "negative" — overall tone
+
+Return ONLY a valid JSON object. No preamble, no markdown.`
+
 async function summarizeWithAnthropic(content: string, source: string): Promise<string> {
   const res = await getAnthropic().messages.create({
     model: "claude-sonnet-4-5",
@@ -66,40 +77,76 @@ async function summarizeWithOpenAI(content: string, source: string): Promise<str
   return res.choices[0]?.message?.content ?? ""
 }
 
+async function summarizePdfWithAnthropic(file: File, source: string): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer()
+  const base64 = Buffer.from(arrayBuffer).toString("base64")
+  const res = await getAnthropic().messages.create({
+    model: "claude-sonnet-4-5",
+    max_tokens: 2048,
+    messages: [{
+      role: "user",
+      content: [
+        { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } } as any,
+        { type: "text", text: SUMMARIZE_PDF_PROMPT(source) },
+      ],
+    }],
+  })
+  return res.content[0].type === "text" ? res.content[0].text : ""
+}
+
+async function summarizePdfWithOpenAI(file: File, source: string): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer()
+  const base64 = Buffer.from(arrayBuffer).toString("base64")
+  const res = await getOpenAI().responses.create({
+    model: "gpt-4o",
+    input: [
+      { type: "input_file", filename: file.name, file_data: `data:application/pdf;base64,${base64}` },
+      { type: "input_text", text: SUMMARIZE_PDF_PROMPT(source) },
+    ],
+  } as any)
+  return (res as any).output_text ?? ""
+}
+
 export async function POST(req: NextRequest) {
   const contentType = req.headers.get("content-type") ?? ""
 
   const settings = await getSettings()
   const provider = resolveProvider(settings?.ai_provider as AIProvider)
 
-  let rawContent = ""
-  let source = "unknown source"
-
+  // PDF upload — single direct call, no intermediate extraction step
   if (contentType.includes("multipart/form-data")) {
-    // PDF upload
     const formData = await req.formData()
     const file = formData.get("file") as File
     if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 })
+    const pdfSource = file.name
     try {
-      rawContent = await extractPdf(file, provider)
-      source = file.name
+      const text = provider === "openai"
+        ? await summarizePdfWithOpenAI(file, pdfSource)
+        : await summarizePdfWithAnthropic(file, pdfSource)
+      const stripped = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim()
+      const match = stripped.match(/\{[\s\S]*\}/)
+      if (!match) throw new Error("No JSON in response")
+      const result = JSON.parse(match[0])
+      return NextResponse.json({ ...result, source_url: pdfSource })
     } catch (err) {
-      return NextResponse.json({ error: "Failed to extract PDF", detail: String(err) }, { status: 500 })
+      console.error("PDF summarize error:", err)
+      return NextResponse.json({ error: "Failed to summarize PDF", detail: String(err) }, { status: 500 })
     }
-  } else {
-    // URL
-    const body = await req.json()
-    const parsed = ResearchSummarizeRequestSchema.safeParse(body)
-    if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.errors[0].message }, { status: 400 })
-    }
-    const { url } = parsed.data
-    try {
-      rawContent = await fetchUrlContent(url)
-      source = url
-    } catch (err) {
-      return NextResponse.json({ error: "Failed to fetch URL", detail: String(err) }, { status: 500 })
-    }
+  }
+
+  // URL
+  const body = await req.json()
+  const parsed = ResearchSummarizeRequestSchema.safeParse(body)
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.errors[0].message }, { status: 400 })
+  }
+  const { url } = parsed.data
+
+  let rawContent = ""
+  try {
+    rawContent = await fetchUrlContent(url)
+  } catch (err) {
+    return NextResponse.json({ error: "Failed to fetch URL", detail: String(err) }, { status: 500 })
   }
 
   if (!rawContent || rawContent.length < 100) {
@@ -108,14 +155,14 @@ export async function POST(req: NextRequest) {
 
   try {
     const text = provider === "openai"
-      ? await summarizeWithOpenAI(rawContent, source)
-      : await summarizeWithAnthropic(rawContent, source)
+      ? await summarizeWithOpenAI(rawContent, url)
+      : await summarizeWithAnthropic(rawContent, url)
 
     const stripped = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim()
     const match = stripped.match(/\{[\s\S]*\}/)
     if (!match) throw new Error("No JSON in response")
     const result = JSON.parse(match[0])
-    return NextResponse.json({ ...result, source_url: source })
+    return NextResponse.json({ ...result, source_url: url })
   } catch (err) {
     console.error("Summarize error:", err)
     return NextResponse.json({ error: "Summarization failed" }, { status: 500 })
