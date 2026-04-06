@@ -21,9 +21,9 @@ const humanityInstructions: Record<number, string> = {
 }
 
 const sizeInstructions: Record<string, string> = {
-  "Short": "Keep the post between 400–600 characters. Punchy and concise.",
-  "Medium": "Keep the post between 700–1000 characters. Balanced depth and readability.",
-  "Long": "Keep the post between 1200–1800 characters. Go deep — data, frameworks, analysis.",
+  "Short": "400–600 characters. One sharp idea, one hook, one closing line.",
+  "Medium": "700–1,300 characters. The research sweet spot — balanced depth and readability.",
+  "Long": "1,200–1,600 characters. Full story + data + framework. Never exceed 1,600 — engagement drops above this.",
 }
 
 export async function POST(req: NextRequest) {
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
 
   const [settings, knowledgeItems] = await Promise.all([getSettings(), getKnowledgeBase()])
   const provider = resolveProvider(settings?.ai_provider as AIProvider)
-  const systemPrompt = settings ? await buildSystemPrompt(settings, knowledgeItems) : ""
+  const systemPrompt = settings ? await buildSystemPrompt(settings, knowledgeItems, tone) : ""
 
   const toneInstruction = toneInstructions[(tone as Tone) ?? "Direct & Bold"]
   const humanityInstruction = humanityInstructions[Math.min(5, Math.max(1, Math.round(humanityLevel)))]
@@ -56,6 +56,8 @@ ${experience}
 ${contextBlock}
 
 Writing rules:
+- Hook (first 1–2 lines): 6–10 words maximum — a specific number, bold finding, or counterintuitive fact. Not an opinion. This line determines 90% of reach.
+- Sentences under 12 words throughout the body (+20% engagement — research-backed)
 - Open with a striking statistic, surprising finding, or counterintuitive pattern — not an opinion, a FACT
 - Every claim must feel backed by evidence, data, or a recognizable industry pattern
 - Use specific numbers wherever possible: percentages, dollar amounts, timeframes, ratios
@@ -68,7 +70,7 @@ Size instruction: ${sizeInstruction}
 Humanity instruction: ${humanityInstruction}
 ${harveyInstruction}
 
-End with up to 8 relevant hashtags on the last line.
+End with exactly 3–5 relevant hashtags on the last line. More than 5 hurts algorithmic reach.
 
 Return ONLY the post text. No explanation, no JSON, no preamble.`
 

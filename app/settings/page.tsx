@@ -10,8 +10,8 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { toast } from "@/hooks/use-toast"
-import { Loader2, Plus, X, Trash2, FileText, Globe, Save, RefreshCw } from "lucide-react"
-import { Settings, KnowledgeItem } from "@/lib/settings"
+import { Loader2, Plus, X, Trash2, FileText, Globe, Save, RefreshCw, Sparkles } from "lucide-react"
+import { Settings, KnowledgeItem, PostExample } from "@/lib/settings"
 
 // Moscow is UTC+3
 function moscowTimeFromUtc(utcTime: string): string {
@@ -47,6 +47,20 @@ export default function SettingsPage() {
   const [newUrlName, setNewUrlName] = useState("")
   const [addingUrl, setAddingUrl] = useState(false)
   const [uploadingPdf, setUploadingPdf] = useState(false)
+
+  // Examples state
+  const [examples, setExamples] = useState<PostExample[]>([])
+  const [loadingExamples, setLoadingExamples] = useState(false)
+  const [exampleText, setExampleText] = useState("")
+  const [extracting, setExtracting] = useState(false)
+  const [savingExample, setSavingExample] = useState(false)
+  const [extractedMeta, setExtractedMeta] = useState<{
+    hook_text: string; hook_type: string; tone: string; format: string; why_it_works: string; topic_tags: string[]
+  } | null>(null)
+  const [exampleReactions, setExampleReactions] = useState("")
+  const [exampleComments, setExampleComments] = useState("")
+  const [exampleViews, setExampleViews] = useState("")
+  const [exampleSource, setExampleSource] = useState<"own" | "curated">("own")
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -185,6 +199,81 @@ export default function SettingsPage() {
     setKnowledge((prev) => prev.filter((item) => item.id !== id))
   }
 
+  const handleLoadExamples = async () => {
+    setLoadingExamples(true)
+    try {
+      const res = await fetch("/api/examples")
+      if (res.ok) setExamples(await res.json())
+    } finally {
+      setLoadingExamples(false)
+    }
+  }
+
+  const handleExtractMeta = async () => {
+    if (!exampleText.trim()) return
+    setExtracting(true)
+    setExtractedMeta(null)
+    try {
+      const res = await fetch("/api/examples/extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: exampleText.trim() }),
+      })
+      if (!res.ok) throw new Error("Extraction failed")
+      setExtractedMeta(await res.json())
+    } catch {
+      toast({ title: "Failed to extract metadata", variant: "destructive" })
+    } finally {
+      setExtracting(false)
+    }
+  }
+
+  const handleSaveExample = async () => {
+    if (!exampleText.trim()) return
+    setSavingExample(true)
+    try {
+      const res = await fetch("/api/examples", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: exampleText.trim(),
+          ...extractedMeta,
+          reactions: exampleReactions ? parseInt(exampleReactions) : null,
+          comments: exampleComments ? parseInt(exampleComments) : null,
+          views: exampleViews ? parseInt(exampleViews) : null,
+          source: exampleSource,
+        }),
+      })
+      if (!res.ok) throw new Error("Save failed")
+      const saved = await res.json()
+      setExamples(prev => [saved, ...prev].sort((a, b) => (b.reactions ?? 0) - (a.reactions ?? 0)))
+      setExampleText("")
+      setExtractedMeta(null)
+      setExampleReactions("")
+      setExampleComments("")
+      setExampleViews("")
+      toast({ title: "Example saved" })
+    } catch {
+      toast({ title: "Failed to save example", variant: "destructive" })
+    } finally {
+      setSavingExample(false)
+    }
+  }
+
+  const handleDeleteExample = async (id: string) => {
+    await fetch(`/api/examples/${id}`, { method: "DELETE" })
+    setExamples(prev => prev.filter(e => e.id !== id))
+  }
+
+  const handleToggleExample = async (id: string, active: boolean) => {
+    await fetch(`/api/examples/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ active }),
+    })
+    setExamples(prev => prev.map(e => e.id === id ? { ...e, active } : e))
+  }
+
   if (!settings) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -214,6 +303,7 @@ export default function SettingsPage() {
           <TabsTrigger value="topics">Topics & Competitors</TabsTrigger>
           <TabsTrigger value="sources">News Sources</TabsTrigger>
           <TabsTrigger value="knowledge">Knowledge Base</TabsTrigger>
+          <TabsTrigger value="examples" onClick={() => { if (!examples.length) handleLoadExamples() }}>Examples</TabsTrigger>
           <TabsTrigger value="prompt" onClick={() => { if (!systemPrompt) handleLoadPrompt() }}>System Prompt</TabsTrigger>
         </TabsList>
 
@@ -554,6 +644,149 @@ export default function SettingsPage() {
         </TabsContent>
 
         {/* System Prompt Tab */}
+        <TabsContent value="examples" className="space-y-6 mt-6">
+          {/* Add example */}
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="text-base">Add Writing Example</CardTitle>
+              <CardDescription>Paste a high-performing LinkedIn post. AI will extract metadata automatically. You add the engagement numbers.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Textarea
+                value={exampleText}
+                onChange={(e) => { setExampleText(e.target.value); setExtractedMeta(null) }}
+                placeholder="Paste a LinkedIn post here..."
+                className="resize-none text-sm min-h-[160px] font-mono"
+              />
+              <Button variant="outline" onClick={handleExtractMeta} disabled={!exampleText.trim() || extracting}>
+                {extracting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Extracting...</> : <><Sparkles className="mr-2 h-4 w-4" />Extract metadata</>}
+              </Button>
+
+              {extractedMeta && (
+                <div className="space-y-3 pt-2 border-t border-border">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Tone</Label>
+                      <p className="text-sm font-medium">{extractedMeta.tone}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Hook type</Label>
+                      <p className="text-sm font-medium">{extractedMeta.hook_type}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Format</Label>
+                      <p className="text-sm font-medium">{extractedMeta.format}</p>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Hook</Label>
+                    <p className="text-sm text-foreground">{extractedMeta.hook_text}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Why it works</Label>
+                    <textarea
+                      className="w-full text-sm text-foreground bg-muted rounded-md px-3 py-2 resize-none min-h-[72px] border border-border"
+                      value={extractedMeta.why_it_works}
+                      onChange={(e) => setExtractedMeta(prev => prev ? { ...prev, why_it_works: e.target.value } : null)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Topic tags</Label>
+                    <div className="flex flex-wrap gap-1">
+                      {extractedMeta.topic_tags.map(t => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-3 gap-3 pt-2 border-t border-border">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Reactions ❤️</Label>
+                  <Input type="number" min="0" value={exampleReactions} onChange={(e) => setExampleReactions(e.target.value)} placeholder="e.g. 340" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Comments 💬</Label>
+                  <Input type="number" min="0" value={exampleComments} onChange={(e) => setExampleComments(e.target.value)} placeholder="e.g. 48" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Views (optional)</Label>
+                  <Input type="number" min="0" value={exampleViews} onChange={(e) => setExampleViews(e.target.value)} placeholder="e.g. 12000" />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex gap-2">
+                  <Button
+                    variant={exampleSource === "own" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setExampleSource("own")}
+                  >My post</Button>
+                  <Button
+                    variant={exampleSource === "curated" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setExampleSource("curated")}
+                  >Curated</Button>
+                </div>
+                <Button onClick={handleSaveExample} disabled={!exampleText.trim() || savingExample}>
+                  {savingExample ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Save example
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Examples list */}
+          {loadingExamples ? (
+            <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+          ) : examples.length === 0 ? (
+            <Card className="bg-card border-border border-dashed">
+              <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                <Sparkles className="h-8 w-8 text-muted-foreground mb-3 opacity-30" />
+                <p className="text-sm text-muted-foreground">No examples yet. Add your best-performing posts above.</p>
+                <p className="text-xs text-muted-foreground mt-1">Aim for 5–15 examples across different tones for best results.</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {examples.map((ex) => (
+                <Card key={ex.id} className={`bg-card border-border ${!ex.active ? "opacity-50" : ""}`}>
+                  <CardContent className="pt-4 space-y-2">
+                    <div className="flex items-start justify-between gap-4">
+                      <p className="text-sm font-medium text-foreground leading-snug flex-1">{ex.hook_text || ex.content.slice(0, 80)}</p>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          variant="ghost" size="sm"
+                          className="text-xs h-7 px-2"
+                          onClick={() => handleToggleExample(ex.id, !ex.active)}
+                        >{ex.active ? "Disable" : "Enable"}</Button>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={() => handleDeleteExample(ex.id)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 items-center">
+                      {ex.tone && <Badge variant="outline" className="text-xs">{ex.tone}</Badge>}
+                      {ex.hook_type && <Badge variant="outline" className="text-xs">{ex.hook_type}</Badge>}
+                      {ex.engagement_tier && (
+                        <Badge className={`text-xs ${ex.engagement_tier === "viral" ? "bg-orange-500/20 text-orange-400 border-orange-500/30" : ex.engagement_tier === "high" ? "bg-green-500/20 text-green-400 border-green-500/30" : "bg-muted text-muted-foreground"}`}>
+                          {ex.engagement_tier}
+                        </Badge>
+                      )}
+                      {ex.reactions != null && <span className="text-xs text-muted-foreground">❤️ {ex.reactions}</span>}
+                      {ex.comments != null && <span className="text-xs text-muted-foreground">💬 {ex.comments}</span>}
+                      {ex.char_count && <span className="text-xs text-muted-foreground">{ex.char_count} chars</span>}
+                      <span className="text-xs text-muted-foreground">{ex.source}</span>
+                    </div>
+                    {ex.why_it_works && (
+                      <p className="text-xs text-muted-foreground italic">{ex.why_it_works}</p>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
         <TabsContent value="prompt" className="space-y-6 mt-6">
           <Card className="bg-card border-border">
             <CardHeader>

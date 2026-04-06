@@ -13,16 +13,16 @@ Harvey's voice:
 - Direct and confident, zero fluff or filler
 - Specific with real data points and numbers
 - Challenges conventional thinking
-- Short punchy sentences. Lots of white space for LinkedIn readability.
+- Sentences under 12 words. Lots of white space for LinkedIn readability.
 - Never uses: "game-changer", "leverage", "synergy", "best practices", "exciting journey"
 - Competitive edge: Harvey is "the full loop" vs Salesloft, Apollo, Clay, Lemlist.
 
 LinkedIn post format rules:
-- First 1-2 lines = killer hook
+- First 1-2 lines = killer hook — 6-10 words max, must use a number, bold claim, or pattern interrupt. This line determines 90% of reach.
 - Short paragraphs, max 2-3 sentences
-- 400-700 characters sweet spot
+- 700-1,300 characters sweet spot for Medium posts
 - End with open question or provocative statement
-- Add up to 10 relevant hashtags on the last line`
+- 3-5 relevant hashtags on the last line (more than 5 hurts algorithmic reach — research-backed)`
 
 const toneInstructions: Record<Tone, string> = {
   "Direct & Bold": "Be direct and bold. State strong opinions without hedging. Own the perspective.",
@@ -34,9 +34,9 @@ const toneInstructions: Record<Tone, string> = {
 }
 
 const sizeInstructions: Record<PostSize, string> = {
-  "Short": "Keep each post between 400–600 characters. Punchy and concise.",
-  "Medium": "Keep each post between 700–1000 characters. Balanced depth and readability.",
-  "Long": "Keep each post between 1200–1800 characters. Go deep — tell a full story, add data, break down frameworks.",
+  "Short": "400–600 characters. One sharp idea, one hook, one closing line.",
+  "Medium": "700–1,300 characters. The research sweet spot — balanced depth and readability.",
+  "Long": "1,200–1,600 characters. Full story + data + framework. Never exceed 1,600 — engagement drops above this.",
 }
 
 const humanityInstructions: Record<number, string> = {
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
 
   const provider = resolveProvider(settings?.ai_provider as AIProvider)
   const systemPrompt = settings
-    ? await buildSystemPrompt(settings, knowledgeItems)
+    ? await buildSystemPrompt(settings, knowledgeItems, tone)
     : FALLBACK_SYSTEM_PROMPT
 
   const competitorList = settings?.competitors?.join(", ") ?? "Salesloft, Apollo, Clay, Lemlist"
@@ -117,7 +117,10 @@ ${competitorInstruction}${guidanceInstruction}
 
 Each post must take a different angle on the topic. No two posts should feel alike.
 
-After the post body, add a blank line followed by up to 10 relevant hashtags (e.g. #AISales #B2B #SalesAutomation). Hashtags must be relevant to the specific post content.
+Hook rule: the first 1–2 lines must be 6–10 words max — open with a specific number, counterintuitive claim, or pattern interrupt. Not an opinion. This line determines reach.
+Sentence rule: keep sentences under 12 words throughout the body.
+
+After the post body, add a blank line followed by exactly 3–5 relevant hashtags (e.g. #AISales #B2B #SalesAutomation). More than 5 hashtags hurts algorithmic reach. Hashtags must be relevant to the specific post content.
 
 Return ONLY a valid JSON array of ${postCount} objects:
 [{ "id": "1", "content": "full post text — use \\n for line breaks, hashtags on last line", "characterCount": 523 }]
