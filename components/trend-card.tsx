@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ArrowRight, Flame, TrendingUp, Minus, ArrowUp, MessageSquare, Clock } from "lucide-react"
+import { ArrowRight, Flame, TrendingUp, Minus, ArrowUp, MessageSquare, Clock, Lock, CheckCircle } from "lucide-react"
 import { MessageCircle } from "lucide-react"
 import { Trend } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -33,9 +33,15 @@ function getScoreColor(score: number): string {
   return "bg-red-500/20 text-red-400 border-red-500/30"
 }
 
+const BLOCKED_DOMAINS = ["mckinsey.com", "gartner.com", "forrester.com", "hbr.org", "wsj.com"]
+
 export function TrendCard({ trend }: TrendCardProps) {
   const router = useRouter()
   const VelocityIcon = velocityConfig[trend.velocity].icon
+
+  const contentStatus = trend.source_url && trend.source !== "Reddit"
+    ? BLOCKED_DOMAINS.some(d => trend.source_url!.includes(d)) ? "blocked" : "accessible"
+    : null
 
   const handleSelect = () => {
     sessionStorage.setItem("selectedTrend", JSON.stringify(trend))
@@ -78,6 +84,21 @@ export function TrendCard({ trend }: TrendCardProps) {
             Score: {trend.relevanceScore}/10
           </Badge>
         </div>
+        {contentStatus && (
+          <div className="flex items-center gap-1 w-full">
+            {contentStatus === "accessible" ? (
+              <span className="flex items-center gap-1 text-xs text-emerald-400">
+                <CheckCircle className="h-3 w-3" />
+                Full content available
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Lock className="h-3 w-3" />
+                Content blocked — paste manually
+              </span>
+            )}
+          </div>
+        )}
         {(trend.upvotes != null || trend.comments != null) && (
           <div className="flex items-center gap-3 w-full text-xs text-muted-foreground">
             {trend.upvotes != null && (

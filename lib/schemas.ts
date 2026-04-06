@@ -20,6 +20,7 @@ export const GenerateRequestSchema = z.object({
   humanityLevel: z.number().int().min(1).max(5).default(3),
   userGuidance: z.string().optional(),
   includeCompetitor: z.boolean().default(false),
+  manualContent: z.string().optional(),
 })
 
 export const RedditCommentRequestSchema = z.object({

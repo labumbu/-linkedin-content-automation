@@ -45,6 +45,7 @@ function GenerateContent() {
   const [humanityLevel, setHumanityLevel] = useState([3])
   const [userGuidance, setUserGuidance] = useState("")
   const [includeCompetitor, setIncludeCompetitor] = useState(false)
+  const [manualContent, setManualContent] = useState("")
 
   const humanityLabels: Record<number, string> = {
     1: "Polished & structured",
@@ -104,6 +105,7 @@ function GenerateContent() {
           humanityLevel: humanityLevel[0],
           userGuidance,
           includeCompetitor,
+          manualContent: manualContent.trim() || undefined,
         }),
       })
 
@@ -234,6 +236,19 @@ function GenerateContent() {
                   onChange={(e) => setUserGuidance(e.target.value)}
                   placeholder="e.g. mention our new pricing, focus on outbound SDRs, avoid mentioning AI..."
                   className="resize-none text-sm min-h-[80px]"
+                />
+              </div>
+
+              {/* Manual Article Content */}
+              <div className="space-y-2">
+                <Label className="text-sm text-muted-foreground">
+                  Full article content <span className="text-xs">(optional — paste if source is paywalled or blocked)</span>
+                </Label>
+                <Textarea
+                  value={manualContent}
+                  onChange={(e) => setManualContent(e.target.value)}
+                  placeholder="Paste the full article text here..."
+                  className="resize-none text-sm min-h-[120px]"
                 />
               </div>
 

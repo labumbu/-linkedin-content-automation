@@ -58,10 +58,10 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.errors[0].message }, { status: 400 })
   }
-  const { trend, language, tone, postCount, postSize, humanityLevel, userGuidance, includeCompetitor } = parsed.data
+  const { trend, language, tone, postCount, postSize, humanityLevel, userGuidance, includeCompetitor, manualContent } = parsed.data
 
   let articleContent = ""
-  if (trend.source_url && !trend.source_url.includes("reddit.com")) {
+  if (!manualContent?.trim() && trend.source_url && !trend.source_url.includes("reddit.com")) {
     try {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 6000)
@@ -102,10 +102,12 @@ export async function POST(req: NextRequest) {
     ? `\nAdditional instructions from the user: ${userGuidance.trim()}`
     : ""
 
+  const finalContent = manualContent?.trim() || articleContent
+
   const userPrompt = `Generate exactly ${postCount} LinkedIn posts about this trending topic:
 
 Topic: "${trend.title}"
-${articleContent ? `Full article content:\n${articleContent}` : `Context: ${trend.summary}`}
+${finalContent ? `Full article content:\n${finalContent}` : `Context: ${trend.summary}`}
 
 Tone instruction: ${toneInstructions[tone as Tone]}
 Size instruction: ${sizeInstruction}
