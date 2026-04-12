@@ -82,6 +82,7 @@ export default function ResearchPage() {
   const [digestList, setDigestList] = useState<DigestListItem[]>([])
   const [selectedDigestId, setSelectedDigestId] = useState("")
   const [digestListLoading, setDigestListLoading] = useState(false)
+  const [digestListLoaded, setDigestListLoaded] = useState(false)
   const [loadingDigestId, setLoadingDigestId] = useState<string | null>(null)
 
   const loadDigestList = () => {
@@ -96,7 +97,7 @@ export default function ResearchPage() {
         }
       })
       .catch(() => {})
-      .finally(() => setDigestListLoading(false))
+      .finally(() => { setDigestListLoading(false); setDigestListLoaded(true) })
   }
 
   // Load digest list on mount (eslint-disable is intentional — loadDigestList is stable)
@@ -516,7 +517,7 @@ export default function ResearchPage() {
             </>
           )}
 
-          {!generating && !digest && (
+          {!generating && !digest && digestListLoaded && (
             <div className="space-y-4">
               {/* Past digests */}
               {digestList.length > 0 && (
