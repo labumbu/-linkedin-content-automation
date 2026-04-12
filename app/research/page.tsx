@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { PenLine, Copy, Check, Loader2, Download, Newspaper, ExternalLink, TrendingUp, MessageSquare, ThumbsUp, ChevronLeft, ChevronRight } from "lucide-react"
+import { PenLine, Copy, Check, Loader2, Download, Newspaper, ExternalLink, TrendingUp, MessageSquare, ThumbsUp, ChevronLeft, ChevronRight, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -84,6 +84,7 @@ export default function ResearchPage() {
   const [digestListLoading, setDigestListLoading] = useState(false)
   const [digestListLoaded, setDigestListLoaded] = useState(false)
   const [loadingDigestId, setLoadingDigestId] = useState<string | null>(null)
+  const [deletingDigestId, setDeletingDigestId] = useState<string | null>(null)
 
   const loadDigestList = () => {
     setDigestListLoading(true)
@@ -172,6 +173,20 @@ export default function ResearchPage() {
       toast({ title: "PDF generation failed", variant: "destructive" })
     } finally {
       setDownloadingPdf(false)
+    }
+  }
+
+  const handleDeleteDigest = async (id: string) => {
+    setDeletingDigestId(id)
+    try {
+      const res = await fetch(`/api/digest/${id}`, { method: "DELETE" })
+      if (!res.ok) throw new Error()
+      setDigestList((prev) => prev.filter((d) => d.id !== id))
+      if (selectedDigestId === id) setSelectedDigestId("")
+    } catch {
+      toast({ title: "Failed to delete digest", variant: "destructive" })
+    } finally {
+      setDeletingDigestId(null)
     }
   }
 
@@ -533,18 +548,31 @@ export default function ResearchPage() {
                           <p className="text-sm font-medium text-foreground">{d.week_range}</p>
                           {d.headline && <p className="text-xs text-muted-foreground truncate mt-0.5">{d.headline}</p>}
                         </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleLoadDigest(d.id)}
-                          disabled={loadingDigestId === d.id}
-                          className="shrink-0"
-                        >
-                          {loadingDigestId === d.id
-                            ? <><Loader2 className="mr-2 h-3 w-3 animate-spin" />Loading…</>
-                            : "View"
-                          }
-                        </Button>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleLoadDigest(d.id)}
+                            disabled={loadingDigestId === d.id || !!deletingDigestId}
+                          >
+                            {loadingDigestId === d.id
+                              ? <><Loader2 className="mr-2 h-3 w-3 animate-spin" />Loading…</>
+                              : "View"
+                            }
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDeleteDigest(d.id)}
+                            disabled={deletingDigestId === d.id || !!loadingDigestId}
+                            className="text-muted-foreground hover:text-destructive"
+                          >
+                            {deletingDigestId === d.id
+                              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              : <Trash2 className="h-3.5 w-3.5" />
+                            }
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </CardContent>
