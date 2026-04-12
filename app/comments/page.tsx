@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Loader2, Copy, Check, Save, RefreshCw, Star, Trash2 } from "lucide-react"
+import { Loader2, Copy, Check, Save, RefreshCw, Star, Trash2, Search, ArrowUpRight, MessageSquare, ThumbsUp } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 import { Trend } from "@/lib/types"
 import { supabase } from "@/lib/supabase/client"
@@ -49,6 +49,19 @@ interface LinkedInResult {
   recommendedArchetype?: string
 }
 
+interface RedditSearchPost {
+  id: string
+  title: string
+  author: string
+  subreddit: string
+  score: number
+  num_comments: number
+  url: string
+  created_utc: number
+  selftext: string
+  upvote_ratio: number
+}
+
 function CommentsContent() {
   const searchParams = useSearchParams()
   const defaultTab = searchParams.get("tab") === "linkedin" ? "linkedin" : "reddit"
@@ -77,6 +90,13 @@ function CommentsContent() {
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyLoaded, setHistoryLoaded] = useState(false)
   const [copiedHistory, setCopiedHistory] = useState<string | null>(null)
+
+  // Reddit finder state
+  const [finderKeywords, setFinderKeywords] = useState("")
+  const [finderResults, setFinderResults] = useState<RedditSearchPost[]>([])
+  const [finderLoading, setFinderLoading] = useState(false)
+  const [finderSearched, setFinderSearched] = useState(false)
+  const [activeTab, setActiveTab] = useState(defaultTab)
 
   const loadHistory = async () => {
     if (historyLoading) return
@@ -179,13 +199,14 @@ function CommentsContent() {
   const handleSaveLinkedin = async () => {
     if (!linkedinResult) return
     for (const v of linkedinResult.variants ?? []) {
-      await supabase.from("comments").insert({
+      const { error } = await supabase.from("comments").insert({
         platform: "linkedin",
         archetype: v.archetype,
         original_content: postContent,
         generated_comment: v.body,
         word_count: v.wordCount,
-      }).catch(console.error)
+      })
+      if (error) console.error(error)
     }
     toast({ title: "Comments saved" })
   }
@@ -203,6 +224,34 @@ function CommentsContent() {
     setTimeout(() => setCopiedLinkedin(null), 2000)
   }
 
+  const searchRedditPosts = async () => {
+    if (!finderKeywords.trim()) return
+    setFinderLoading(true)
+    setFinderSearched(false)
+    try {
+      const res = await fetch("/api/reddit/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keywords: finderKeywords }),
+      })
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      setFinderResults(data.posts ?? [])
+      setFinderSearched(true)
+    } catch {
+      toast({ title: "Search failed", variant: "destructive" })
+    } finally {
+      setFinderLoading(false)
+    }
+  }
+
+  const useThreadForComment = (post: RedditSearchPost) => {
+    setTrendTitle(post.title)
+    setTrendSummary(post.selftext || `r/${post.subreddit} · ${post.score} upvotes · ${post.num_comments} comments`)
+    setTrendUrl(post.url)
+    setActiveTab("reddit")
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -210,11 +259,12 @@ function CommentsContent() {
         <p className="text-muted-foreground mt-1">Generate engaging comments for Reddit threads and LinkedIn posts</p>
       </div>
 
-      <Tabs defaultValue={defaultTab}>
-        <TabsList className="grid w-full grid-cols-3 max-w-sm">
+      <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); if (v === "history" && !historyLoaded) loadHistory() }}>
+        <TabsList className="grid w-full grid-cols-4 max-w-md">
           <TabsTrigger value="reddit">Reddit</TabsTrigger>
           <TabsTrigger value="linkedin">LinkedIn</TabsTrigger>
-          <TabsTrigger value="history" onClick={() => !historyLoaded && loadHistory()}>History</TabsTrigger>
+          <TabsTrigger value="finder">Find Threads</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
         </TabsList>
 
         {/* Reddit Tab */}
@@ -253,6 +303,25 @@ function CommentsContent() {
                   {trendId && !trendUrl && (
                     <p className="text-xs text-muted-foreground">URL not available for this trend — paste it manually.</p>
                   )}
+                  {/* Subreddit-specific warnings */}
+                  {trendUrl.includes("r/SaaS") && (
+                    <p className="text-xs text-yellow-500/80">⚠ r/SaaS bans direct self-promotion. Keep Harvey mention to disclosure-only or use Don't mention Harvey.</p>
+                  )}
+                  {trendUrl.includes("r/sales") && (
+                    <p className="text-xs text-yellow-500/80">⚠ r/sales — value-first required. Product mentions only if directly solving OP's problem.</p>
+                  )}
+                  {trendUrl.includes("r/entrepreneur") && (
+                    <p className="text-xs text-yellow-500/80">⚠ r/Entrepreneur — story and experience comments work best. Avoid tool lists.</p>
+                  )}
+                  {trendUrl.includes("r/startups") && (
+                    <p className="text-xs text-blue-400/80">ℹ r/startups allows product mentions with disclosure. Keep it under 10% of the comment.</p>
+                  )}
+                </div>
+                {/* Timing guidance */}
+                <div className="rounded-md bg-muted/50 border border-border px-3 py-2 space-y-0.5">
+                  <p className="text-xs font-medium text-foreground">Best posting times (Eastern)</p>
+                  <p className="text-xs text-muted-foreground">6–9 AM · 12–2 PM · 7–9 PM</p>
+                  <p className="text-xs text-muted-foreground">Post 30 min before peak for max early velocity. First 90 min determine reach.</p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm text-muted-foreground">Archetype</Label>
@@ -451,6 +520,87 @@ function CommentsContent() {
                 </Card>
               )}
             </div>
+          </div>
+        </TabsContent>
+
+        {/* Find Threads Tab */}
+        <TabsContent value="finder" className="mt-6">
+          <div className="space-y-4">
+            <Card className="bg-card border-border">
+              <CardHeader>
+                <CardTitle className="text-base">Find Reddit Threads to Comment On</CardTitle>
+                <p className="text-xs text-muted-foreground">Search B2B subreddits for high-engagement posts where a comment from Harvey adds value. Sorted by commenting opportunity (comments weight 2×).</p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex gap-2">
+                  <Input
+                    value={finderKeywords}
+                    onChange={(e) => setFinderKeywords(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && searchRedditPosts()}
+                    placeholder="e.g. cold email, AI sales tools, pipeline management..."
+                    className="flex-1"
+                  />
+                  <Button onClick={searchRedditPosts} disabled={finderLoading || !finderKeywords.trim()}>
+                    {finderLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">Searches: r/sales, r/SaaS, r/B2BMarketing, r/startups, r/Entrepreneur, r/artificial + more</p>
+              </CardContent>
+            </Card>
+
+            {finderLoading && (
+              <Card className="bg-card border-border">
+                <CardContent className="flex items-center justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mr-2" />
+                  <p className="text-muted-foreground text-sm">Searching Reddit...</p>
+                </CardContent>
+              </Card>
+            )}
+
+            {finderSearched && finderResults.length === 0 && (
+              <Card className="bg-card border-border border-dashed">
+                <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                  <p className="text-sm text-muted-foreground">No results found. Try different keywords or Reddit may be rate-limiting server requests.</p>
+                </CardContent>
+              </Card>
+            )}
+
+            {finderResults.map((post) => (
+              <Card key={post.id} className="bg-card border-border hover:border-muted-foreground/40 transition-colors">
+                <CardContent className="pt-4 pb-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <Badge variant="outline" className="text-xs text-orange-400 border-orange-500/30 shrink-0">
+                          r/{post.subreddit}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(post.created_utc * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        </span>
+                      </div>
+                      <p className="text-sm font-medium text-foreground leading-snug mb-2">{post.title}</p>
+                      {post.selftext && (
+                        <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{post.selftext}</p>
+                      )}
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1"><ThumbsUp className="h-3 w-3" />{post.score}</span>
+                        <span className="flex items-center gap-1"><MessageSquare className="h-3 w-3" />{post.num_comments} comments</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2 shrink-0">
+                      <Button size="sm" variant="outline" onClick={() => useThreadForComment(post)}>
+                        Comment
+                      </Button>
+                      <a href={post.url} target="_blank" rel="noopener noreferrer">
+                        <Button size="sm" variant="ghost" className="w-full text-muted-foreground">
+                          <ArrowUpRight className="h-3.5 w-3.5" />
+                        </Button>
+                      </a>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </TabsContent>
 

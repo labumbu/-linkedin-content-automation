@@ -61,7 +61,7 @@ Return ONLY a valid JSON object. No preamble, no markdown.`
 
 async function summarizeWithAnthropic(content: string, source: string): Promise<string> {
   const res = await getAnthropic().messages.create({
-    model: "claude-sonnet-4-5",
+    model: "claude-sonnet-4-6",
     max_tokens: 2048,
     messages: [{ role: "user", content: SUMMARIZE_PROMPT(content, source) }],
   })
@@ -81,7 +81,7 @@ async function summarizePdfWithAnthropic(file: File, source: string): Promise<st
   const arrayBuffer = await file.arrayBuffer()
   const base64 = Buffer.from(arrayBuffer).toString("base64")
   const res = await getAnthropic().messages.create({
-    model: "claude-sonnet-4-5",
+    model: "claude-sonnet-4-6",
     max_tokens: 2048,
     messages: [{
       role: "user",

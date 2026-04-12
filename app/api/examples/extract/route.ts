@@ -14,7 +14,7 @@ Return ONLY a valid JSON object with these fields:
 - hook_type: string — one of: "statistic" | "question" | "contrarian" | "bold_claim" | "pattern_interrupt" | "story"
 - tone: string — one of: "Direct & Bold" | "Data-Driven" | "Contrarian" | "Storytelling" | "HOW TO" | "WHAT TO"
 - format: string — one of: "text_only" | "list" | "story" | "stats_heavy" | "how_to"
-- why_it_works: string — 2-3 sentences explaining the specific mechanism that makes this post effective (hook strategy, structural choice, psychological trigger)
+- why_it_works: string — exactly 2 sentences. Sentence 1: identify the specific psychological or structural mechanism (e.g. "Opens with a counterintuitive statistic that violates the reader's existing belief, forcing a pattern interrupt"). Sentence 2: explain the structural choice that amplifies it (e.g. "The numbered list then delivers the payoff in scannable steps, rewarding the curiosity gap opened by the hook"). Be specific — never write vague statements like "this post is engaging because it tells a story."
 - topic_tags: string[] — 3-5 keywords describing the subject matter (e.g. ["outbound", "AI SDR", "pipeline", "B2B"])
 
 Return ONLY the JSON object. No preamble, no markdown.`

@@ -59,7 +59,10 @@ export default function SettingsPage() {
   } | null>(null)
   const [exampleReactions, setExampleReactions] = useState("")
   const [exampleComments, setExampleComments] = useState("")
+  const [exampleReposts, setExampleReposts] = useState("")
   const [exampleViews, setExampleViews] = useState("")
+  const [exampleMediaType, setExampleMediaType] = useState<"text_only" | "image" | "video" | "pdf" | "carousel">("text_only")
+  const [exampleSourceUrl, setExampleSourceUrl] = useState("")
   const [exampleSource, setExampleSource] = useState<"own" | "curated">("own")
 
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -240,7 +243,10 @@ export default function SettingsPage() {
           ...extractedMeta,
           reactions: exampleReactions ? parseInt(exampleReactions) : null,
           comments: exampleComments ? parseInt(exampleComments) : null,
+          reposts: exampleReposts ? parseInt(exampleReposts) : null,
           views: exampleViews ? parseInt(exampleViews) : null,
+          media_type: exampleMediaType,
+          source_url: exampleSourceUrl.trim() || null,
           source: exampleSource,
         }),
       })
@@ -251,7 +257,10 @@ export default function SettingsPage() {
       setExtractedMeta(null)
       setExampleReactions("")
       setExampleComments("")
+      setExampleReposts("")
       setExampleViews("")
+      setExampleMediaType("text_only")
+      setExampleSourceUrl("")
       toast({ title: "Example saved" })
     } catch {
       toast({ title: "Failed to save example", variant: "destructive" })
@@ -263,6 +272,32 @@ export default function SettingsPage() {
   const handleDeleteExample = async (id: string) => {
     await fetch(`/api/examples/${id}`, { method: "DELETE" })
     setExamples(prev => prev.filter(e => e.id !== id))
+  }
+
+  const [reextracting, setReextracting] = useState<string | null>(null)
+
+  const handleReextract = async (ex: PostExample) => {
+    setReextracting(ex.id)
+    try {
+      const res = await fetch("/api/examples/extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: ex.content }),
+      })
+      if (!res.ok) throw new Error()
+      const meta = await res.json()
+      await fetch(`/api/examples/${ex.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(meta),
+      })
+      setExamples(prev => prev.map(e => e.id === ex.id ? { ...e, ...meta } : e))
+      toast({ title: "Metadata updated" })
+    } catch {
+      toast({ title: "Re-extract failed", variant: "destructive" })
+    } finally {
+      setReextracting(null)
+    }
   }
 
   const handleToggleExample = async (id: string, active: boolean) => {
@@ -699,19 +734,46 @@ export default function SettingsPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-3 gap-3 pt-2 border-t border-border">
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Reactions ❤️</Label>
-                  <Input type="number" min="0" value={exampleReactions} onChange={(e) => setExampleReactions(e.target.value)} placeholder="e.g. 340" />
+              <div className="space-y-3 pt-2 border-t border-border">
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Reactions ❤️</Label>
+                    <Input type="number" min="0" value={exampleReactions} onChange={(e) => setExampleReactions(e.target.value)} placeholder="e.g. 340" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Comments 💬</Label>
+                    <Input type="number" min="0" value={exampleComments} onChange={(e) => setExampleComments(e.target.value)} placeholder="e.g. 48" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Reposts 🔁</Label>
+                    <Input type="number" min="0" value={exampleReposts} onChange={(e) => setExampleReposts(e.target.value)} placeholder="e.g. 12" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Views (optional)</Label>
+                    <Input type="number" min="0" value={exampleViews} onChange={(e) => setExampleViews(e.target.value)} placeholder="e.g. 12000" />
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Comments 💬</Label>
-                  <Input type="number" min="0" value={exampleComments} onChange={(e) => setExampleComments(e.target.value)} placeholder="e.g. 48" />
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Media type</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(["text_only", "image", "video", "pdf", "carousel"] as const).map(type => (
+                      <Button
+                        key={type}
+                        variant={exampleMediaType === type ? "default" : "outline"}
+                        size="sm"
+                        className="text-xs h-7 px-2.5"
+                        onClick={() => setExampleMediaType(type)}
+                      >
+                        {type === "text_only" ? "Text only" : type.charAt(0).toUpperCase() + type.slice(1)}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Views (optional)</Label>
-                  <Input type="number" min="0" value={exampleViews} onChange={(e) => setExampleViews(e.target.value)} placeholder="e.g. 12000" />
-                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Original post URL (optional)</Label>
+                <Input value={exampleSourceUrl} onChange={(e) => setExampleSourceUrl(e.target.value)} placeholder="https://linkedin.com/posts/..." />
               </div>
 
               <div className="flex items-center justify-between">
@@ -757,6 +819,15 @@ export default function SettingsPage() {
                         <Button
                           variant="ghost" size="sm"
                           className="text-xs h-7 px-2"
+                          onClick={() => handleReextract(ex)}
+                          disabled={reextracting === ex.id}
+                          title="Re-extract metadata with updated AI prompt"
+                        >
+                          {reextracting === ex.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                        </Button>
+                        <Button
+                          variant="ghost" size="sm"
+                          className="text-xs h-7 px-2"
                           onClick={() => handleToggleExample(ex.id, !ex.active)}
                         >{ex.active ? "Disable" : "Enable"}</Button>
                         <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={() => handleDeleteExample(ex.id)}>
@@ -774,8 +845,13 @@ export default function SettingsPage() {
                       )}
                       {ex.reactions != null && <span className="text-xs text-muted-foreground">❤️ {ex.reactions}</span>}
                       {ex.comments != null && <span className="text-xs text-muted-foreground">💬 {ex.comments}</span>}
+                      {ex.reposts != null && <span className="text-xs text-muted-foreground">🔁 {ex.reposts}</span>}
+                      {ex.media_type && ex.media_type !== "text_only" && <Badge variant="secondary" className="text-xs">{ex.media_type}</Badge>}
                       {ex.char_count && <span className="text-xs text-muted-foreground">{ex.char_count} chars</span>}
                       <span className="text-xs text-muted-foreground">{ex.source}</span>
+                      {ex.source_url && (
+                        <a href={ex.source_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:underline">View original →</a>
+                      )}
                     </div>
                     {ex.why_it_works && (
                       <p className="text-xs text-muted-foreground italic">{ex.why_it_works}</p>

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ArrowRight, Flame, TrendingUp, Minus, ArrowUp, MessageSquare, Clock, Lock, CheckCircle } from "lucide-react"
+import { ArrowRight, Flame, TrendingUp, Minus, ArrowUp, MessageSquare, Clock, Lock, CheckCircle, Search } from "lucide-react"
 import { MessageCircle } from "lucide-react"
 import { Trend } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -39,8 +39,10 @@ export function TrendCard({ trend }: TrendCardProps) {
   const router = useRouter()
   const VelocityIcon = velocityConfig[trend.velocity].icon
 
-  const contentStatus = trend.source_url && trend.source !== "Reddit"
-    ? BLOCKED_DOMAINS.some(d => trend.source_url!.includes(d)) ? "blocked" : "accessible"
+  const contentStatus = trend.source !== "Reddit"
+    ? trend.source_url
+      ? BLOCKED_DOMAINS.some(d => trend.source_url!.includes(d)) ? "blocked" : "accessible"
+      : "no-link"
     : null
 
   const handleSelect = () => {
@@ -91,10 +93,15 @@ export function TrendCard({ trend }: TrendCardProps) {
                 <CheckCircle className="h-3 w-3" />
                 Full content available
               </span>
-            ) : (
+            ) : contentStatus === "blocked" ? (
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Lock className="h-3 w-3" />
                 Content blocked — paste manually
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-xs text-yellow-500/70">
+                <Search className="h-3 w-3" />
+                No direct link — search manually
               </span>
             )}
           </div>

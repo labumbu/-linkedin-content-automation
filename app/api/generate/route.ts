@@ -37,6 +37,7 @@ const sizeInstructions: Record<PostSize, string> = {
   "Short": "400–600 characters. One sharp idea, one hook, one closing line.",
   "Medium": "700–1,300 characters. The research sweet spot — balanced depth and readability.",
   "Long": "1,200–1,600 characters. Full story + data + framework. Never exceed 1,600 — engagement drops above this.",
+  "Carousel": "Generate a carousel/document post. 7 slides total: 1 hook slide + 5 content slides + 1 CTA slide. Each content slide: 1 headline (max 8 words) + 2-3 bullet points (max 10 words each). Average 6.6% engagement vs 2% for text posts.",
 }
 
 const humanityInstructions: Record<number, string> = {
@@ -103,8 +104,31 @@ export async function POST(req: NextRequest) {
     : ""
 
   const finalContent = manualContent?.trim() || articleContent
+  const isCarousel = (postSize as PostSize) === "Carousel"
 
-  const userPrompt = `Generate exactly ${postCount} LinkedIn posts about this trending topic:
+  const userPrompt = isCarousel
+    ? `Generate exactly ${postCount} LinkedIn carousel scripts about this trending topic:
+
+Topic: "${trend.title}"
+${finalContent ? `Full article content:\n${finalContent}` : `Context: ${trend.summary}`}
+
+Tone instruction: ${toneInstructions[tone as Tone]}
+Humanity instruction: ${humanityInstruction}
+${languageInstruction}
+${competitorInstruction}${guidanceInstruction}
+
+CAROUSEL FORMAT (7 slides each):
+- Slide 1 (Hook): Bold headline 6–10 words + 1 sub-line that creates curiosity gap
+- Slides 2–6 (Content): Each has a title (max 8 words) + 2–3 bullet points (max 10 words each, specific and actionable)
+- Slide 7 (CTA): Closing statement + one specific question to drive comments
+
+Each carousel must take a different angle. After slide 7, add a companion caption for the LinkedIn post field (150 chars max, drives "see more" clicks).
+
+Return ONLY a valid JSON array of ${postCount} objects:
+[{ "id": "1", "format": "carousel", "slides": [{ "slide": 1, "title": "Hook title", "body": "Sub-line text" }, { "slide": 2, "title": "...", "body": "• Point 1\\n• Point 2\\n• Point 3" }], "content": "companion caption text (150 chars)", "characterCount": 150, "hookAlternatives": ["Alt hook 1", "Alt hook 2", "Alt hook 3"], "ctaNote": "CTA strong" }]
+
+Return ONLY the JSON array. No explanation, no markdown code blocks, no other text.`
+    : `Generate exactly ${postCount} LinkedIn posts about this trending topic:
 
 Topic: "${trend.title}"
 ${finalContent ? `Full article content:\n${finalContent}` : `Context: ${trend.summary}`}
@@ -122,8 +146,12 @@ Sentence rule: keep sentences under 12 words throughout the body.
 
 After the post body, add a blank line followed by exactly 3–5 relevant hashtags (e.g. #AISales #B2B #SalesAutomation). More than 5 hashtags hurts algorithmic reach. Hashtags must be relevant to the specific post content.
 
+For each post, also generate:
+1. hookAlternatives: 3 alternative first-line hooks (6–10 words each) using different psychological mechanisms — one with a statistic, one with a contrarian claim, one with a "how I" or pattern interrupt. These are swappable first lines only.
+2. ctaNote: one sentence evaluating the closing CTA — flag if it's generic ("comment below", "share this", "what do you think?") and suggest a more specific question that would generate 15+ word replies. If the CTA is already strong and specific, say "CTA strong".
+
 Return ONLY a valid JSON array of ${postCount} objects:
-[{ "id": "1", "content": "full post text — use \\n for line breaks, hashtags on last line", "characterCount": 523 }]
+[{ "id": "1", "content": "full post text — use \\n for line breaks, hashtags on last line", "characterCount": 523, "hookAlternatives": ["Alt hook 1", "Alt hook 2", "Alt hook 3"], "ctaNote": "..." }]
 
 Return ONLY the JSON array. No explanation, no markdown code blocks, no other text.`
 

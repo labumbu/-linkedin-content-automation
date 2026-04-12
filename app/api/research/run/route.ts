@@ -37,7 +37,7 @@ async function aiComplete(provider: "anthropic" | "openai", prompt: string, syst
     return res.choices[0]?.message?.content ?? ""
   } else {
     const res = await getAnthropic().messages.create({
-      model: "claude-sonnet-4-5",
+      model: "claude-sonnet-4-6",
       max_tokens: maxTokens,
       ...(systemPrompt ? { system: systemPrompt } : {}),
       messages: [{ role: "user", content: prompt }],
@@ -73,7 +73,7 @@ async function aiWebSearch(provider: "anthropic" | "openai", topic: string, quer
     return results
   } else {
     const res = await getAnthropic().messages.create({
-      model: "claude-sonnet-4-5",
+      model: "claude-sonnet-4-6",
       max_tokens: 4096,
       tools: [{ type: "web_search_20250305", name: "web_search" } as any],
       messages: [{ role: "user", content: prompt }],

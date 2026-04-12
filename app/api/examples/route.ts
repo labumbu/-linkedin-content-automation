@@ -28,7 +28,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { content, hook_type, tone, format, why_it_works, topic_tags, reactions, comments, views, source } = body
+  const { content, hook_type, tone, format, why_it_works, topic_tags, reactions, comments, reposts, views, media_type, source_url, source } = body
 
   if (!content?.trim()) {
     return NextResponse.json({ error: "content is required" }, { status: 400 })
@@ -51,7 +51,10 @@ export async function POST(req: NextRequest) {
       hashtag_count,
       reactions: reactions ?? null,
       comments: comments ?? null,
+      reposts: reposts ?? null,
       views: views ?? null,
+      media_type: media_type ?? null,
+      source_url: source_url ?? null,
       engagement_tier,
       why_it_works: why_it_works ?? null,
       topic_tags: topic_tags ?? [],

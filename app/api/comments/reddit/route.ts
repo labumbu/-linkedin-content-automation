@@ -98,7 +98,12 @@ ${noHarvey
 - RD-006: Length must be ${sizeMap[commentSize]} — this overrides archetype word count defaults
 - RD-007: Use Reddit-native formatting: **bold** for key terms, numbered lists, line breaks between paragraphs
 
-Write in first person, casual peer tone. Sound like a practitioner sharing real experience, not a marketer.
+AUTHENTICITY RULES (critical — Reddit users instantly spot AI-generated comments):
+- Write as a real practitioner would: include at least one specific detail (a number, a timeframe, a named tool, a situation you observed). Vague generalities = AI signal.
+- Use natural asymmetry: vary sentence length, let one thought trail off, qualify one claim ("at least in my experience"). Perfectly balanced clauses = AI signal.
+- Do NOT polish every sentence. One slightly imperfect transition or informal phrase is better than perfect prose.
+- Never open with "Great question" or "That's a really important point" — those are AI giveaways.
+- Do NOT reuse the same opening word or sentence structure if generating multiple comments in a session.
 
 Return ONLY valid JSON:
 {

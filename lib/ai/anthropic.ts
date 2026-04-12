@@ -6,7 +6,7 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 export async function fetchWebSearchTrends(topicClusters: string[]): Promise<Trend[]> {
   const response = await client.messages.create({
-    model: "claude-sonnet-4-5",
+    model: "claude-sonnet-4-6",
     max_tokens: 4096,
     tools: [{ type: "web_search_20250305", name: "web_search" } as any],
     messages: [{
@@ -15,12 +15,24 @@ export async function fetchWebSearchTrends(topicClusters: string[]): Promise<Tre
 
 Search for topics related to: ${topicClusters.join(", ")}.
 
-Return ONLY a JSON array of exactly 20 trend objects:
-[{ "id": "ws-1", "title": "...", "summary": "...", "source": "Web Search", "relevanceScore": 8, "velocity": "hot" }]
+Prioritise sources from TechCrunch, VentureBeat, Gartner, Forrester, McKinsey, HBR, Forbes, WSJ, SaaStr, a16z.
+
+Return ONLY a JSON array of exactly 20 trend objects with source_url where available:
+[{ "id": "ws-1", "title": "...", "summary": "...", "source": "Web Search", "relevanceScore": 8, "velocity": "hot", "source_url": "https://..." }]
 
 Rules: id prefixed "ws-", relevanceScore 0-10, velocity: hot/rising/stable. Return ONLY the JSON array.`,
     }],
   })
+
+  // Extract URLs from web_search_tool_result blocks
+  const urlsByTitle = new Map<string, string>()
+  for (const block of response.content) {
+    if ((block as any).type === "web_search_tool_result") {
+      for (const r of (block as any).content ?? []) {
+        if (r.url && r.title) urlsByTitle.set(r.title.toLowerCase(), r.url)
+      }
+    }
+  }
 
   let jsonText = ""
   for (const block of response.content) {
@@ -28,7 +40,19 @@ Rules: id prefixed "ws-", relevanceScore 0-10, velocity: hot/rising/stable. Retu
   }
   const match = jsonText.match(/\[[\s\S]*\]/)
   if (!match) throw new Error("No JSON in response")
-  return JSON.parse(match[0])
+  const trends: Trend[] = JSON.parse(match[0])
+
+  // Fuzzy-match trend titles to extracted URLs
+  return trends.map((t) => {
+    if (t.source_url) return t
+    const titleKey = t.title.toLowerCase()
+    for (const [annotTitle, url] of urlsByTitle) {
+      if (annotTitle.includes(titleKey.slice(0, 20)) || titleKey.includes(annotTitle.slice(0, 20))) {
+        return { ...t, source_url: url }
+      }
+    }
+    return t
+  })
 }
 
 export async function analyzeRedditTrends(posts: RedditPost[]): Promise<Trend[]> {
@@ -37,7 +61,7 @@ export async function analyzeRedditTrends(posts: RedditPost[]): Promise<Trend[]>
     .join("\n\n")
 
   const response = await client.messages.create({
-    model: "claude-sonnet-4-5",
+    model: "claude-sonnet-4-6",
     max_tokens: 2048,
     messages: [{
       role: "user",
@@ -69,7 +93,7 @@ export async function generatePostsWithAnthropic(
   userPrompt: string
 ): Promise<string> {
   const message = await client.messages.create({
-    model: "claude-sonnet-4-5",
+    model: "claude-sonnet-4-6",
     max_tokens: 4096,
     system: systemPrompt,
     messages: [{ role: "user", content: userPrompt }],
@@ -82,7 +106,7 @@ export async function extractPdfWithAnthropic(file: File): Promise<string> {
   const base64 = Buffer.from(arrayBuffer).toString("base64")
 
   const response = await client.messages.create({
-    model: "claude-sonnet-4-5",
+    model: "claude-sonnet-4-6",
     max_tokens: 2048,
     messages: [{
       role: "user",

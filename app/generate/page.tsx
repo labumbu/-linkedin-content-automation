@@ -17,6 +17,7 @@ import { Slider } from "@/components/ui/slider"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { PostCard } from "@/components/post-card"
+import { CarouselCard } from "@/components/carousel-card"
 import { Trend, GeneratedPost, Language, Tone, PostSize } from "@/lib/types"
 import { Textarea } from "@/components/ui/textarea"
 import { ArrowLeft, Loader2, RefreshCw, FileText, LayoutDashboard } from "lucide-react"
@@ -213,18 +214,20 @@ function GenerateContent() {
 
               {/* Post Size */}
               <div className="space-y-2">
-                <Label className="text-sm text-muted-foreground">Post Size</Label>
+                <Label className="text-sm text-muted-foreground">Post Format</Label>
                 <Tabs value={postSize} onValueChange={(v) => setPostSize(v as PostSize)}>
-                  <TabsList className="grid w-full grid-cols-3">
+                  <TabsList className="grid w-full grid-cols-4">
                     <TabsTrigger value="Short">Short</TabsTrigger>
                     <TabsTrigger value="Medium">Medium</TabsTrigger>
                     <TabsTrigger value="Long">Long</TabsTrigger>
+                    <TabsTrigger value="Carousel">Carousel</TabsTrigger>
                   </TabsList>
                 </Tabs>
                 <p className="text-xs text-muted-foreground">
                   {postSize === "Short" && "400–600 characters · punchy & concise"}
                   {postSize === "Medium" && "700–1000 characters · balanced depth"}
                   {postSize === "Long" && "1200–1800 characters · full story & data"}
+                  {postSize === "Carousel" && "7-slide document post · 6.6% avg engagement vs 2% for text"}
                 </p>
               </div>
 
@@ -362,7 +365,9 @@ function GenerateContent() {
           ) : (
             <div className="space-y-4">
               {posts.map((post) => (
-                <PostCard key={post.id} post={post} />
+                post.format === "carousel"
+                  ? <CarouselCard key={post.id} post={post} />
+                  : <PostCard key={post.id} post={post} />
               ))}
               {isGenerating && (
                 <Card className="bg-card border-border">
