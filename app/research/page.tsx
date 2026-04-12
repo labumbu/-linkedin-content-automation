@@ -1,17 +1,19 @@
 "use client"
 
 import { useRef, useState } from "react"
-import { Link, FileText, PenLine, Copy, Check, Loader2, ArrowRight } from "lucide-react"
+import { Link, FileText, PenLine, Copy, Check, Loader2, ArrowRight, Download, Newspaper, ExternalLink, TrendingUp, MessageSquare, ThumbsUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 import { Tone } from "@/lib/types"
+import type { DigestResult } from "@/lib/types"
 import { toast } from "@/hooks/use-toast"
 
 const tones: Tone[] = ["Direct & Bold", "Data-Driven", "Contrarian", "Storytelling", "HOW TO", "WHAT TO"]
@@ -24,6 +26,22 @@ const humanityLabels: Record<number, string> = {
   5: "Raw & human",
 }
 
+type PdfTheme = "dark" | "light" | "navy" | "forest"
+
+const PDF_THEMES: { id: PdfTheme; label: string; bg: string; accent: string; text: string }[] = [
+  { id: "dark",   label: "Dark",   bg: "#0A0A0F", accent: "#6366F1", text: "#F8F8FF" },
+  { id: "light",  label: "Light",  bg: "#FFFFFF", accent: "#6366F1", text: "#0F0F1A" },
+  { id: "navy",   label: "Navy",   bg: "#0D1B2A", accent: "#F59E0B", text: "#F0F4F8" },
+  { id: "forest", label: "Forest", bg: "#0D1F17", accent: "#10B981", text: "#ECFDF5" },
+]
+
+const STAGES = [
+  { key: "fetching",     label: "Fetching trends" },
+  { key: "synthesizing", label: "Synthesizing web news" },
+  { key: "reddit",       label: "Analyzing Reddit" },
+  { key: "harvey",       label: "Building Harvey angle" },
+]
+
 interface SummaryResult {
   title: string
   summary: string
@@ -33,18 +51,34 @@ interface SummaryResult {
   source_url: string
 }
 
-export default function ResearchPage() {
-  // --- Shared tab state ---
-  const [activeTab, setActiveTab] = useState("summarize")
+function getWeekRange() {
+  const now = new Date()
+  const start = new Date(now)
+  start.setDate(start.getDate() - 7)
+  const fmt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  return `${fmt(start)} – ${fmt(now)}`
+}
 
-  // --- Summarize tab state ---
+export default function ResearchPage() {
+  const [activeTab, setActiveTab] = useState("digest")
+
+  // ── Digest state ──
+  const [generating, setGenerating] = useState(false)
+  const [digestStage, setDigestStage] = useState<string | null>(null)
+  const [digestMessage, setDigestMessage] = useState("")
+  const [digest, setDigest] = useState<DigestResult | null>(null)
+  const [copiedPost, setCopiedPost] = useState(false)
+  const [selectedTheme, setSelectedTheme] = useState<PdfTheme>("dark")
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
+
+  // ── Summarize state ──
   const [summarizeMode, setSummarizeMode] = useState<"url" | "pdf">("url")
   const [summarizeUrl, setSummarizeUrl] = useState("")
   const [summarizing, setSummarizing] = useState(false)
   const [summaryResult, setSummaryResult] = useState<SummaryResult | null>(null)
   const pdfInputRef = useRef<HTMLInputElement>(null)
 
-  // --- Write Post tab state ---
+  // ── Write Post state ──
   const [postTopic, setPostTopic] = useState("")
   const [postTone, setPostTone] = useState<Tone>("Direct & Bold")
   const [postSize, setPostSize] = useState<"Short" | "Medium" | "Long">("Medium")
@@ -56,7 +90,76 @@ export default function ResearchPage() {
   const [generatedPost, setGeneratedPost] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
-  // --- Summarize handlers ---
+  // ── Digest handlers ──
+  const handleGenerateDigest = async () => {
+    setGenerating(true)
+    setDigest(null)
+    setDigestStage("fetching")
+    setDigestMessage("")
+
+    try {
+      const res = await fetch("/api/digest")
+      if (!res.ok) throw new Error("Failed to start digest")
+
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n")
+        buffer = lines.pop() || ""
+
+        for (const line of lines) {
+          if (!line.trim()) continue
+          try {
+            const msg = JSON.parse(line)
+            if (msg.type === "progress") {
+              setDigestStage(msg.stage)
+              setDigestMessage(msg.message)
+            } else if (msg.type === "complete") {
+              setDigest(msg.digest)
+            } else if (msg.type === "error") {
+              toast({ title: "Digest failed", description: msg.message, variant: "destructive" })
+            }
+          } catch {}
+        }
+      }
+    } catch {
+      toast({ title: "Digest generation failed", description: "Check your API keys and try again.", variant: "destructive" })
+    } finally {
+      setGenerating(false)
+      setDigestStage(null)
+    }
+  }
+
+  const handleDownloadPdf = async () => {
+    if (!digest) return
+    setDownloadingPdf(true)
+    try {
+      const res = await fetch("/api/digest/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ digest, theme: selectedTheme }),
+      })
+      if (!res.ok) throw new Error()
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `harvey-digest-${selectedTheme}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      toast({ title: "PDF generation failed", variant: "destructive" })
+    } finally {
+      setDownloadingPdf(false)
+    }
+  }
+
+  // ── Summarize handlers ──
   const handleSummarizeUrl = async () => {
     if (!summarizeUrl.trim()) return
     setSummarizing(true)
@@ -97,15 +200,9 @@ export default function ResearchPage() {
 
   const prefillFromSummary = (result: SummaryResult) => {
     const parts: string[] = []
-    if (result.bullets.length > 0) {
-      parts.push(result.bullets.map(b => `• ${b}`).join("\n"))
-    }
-    if (result.stats.length > 0) {
-      parts.push("Key data points:\n" + result.stats.map(s => `• ${s}`).join("\n"))
-    }
-    if (result.summary) {
-      parts.push(`Summary:\n${result.summary}`)
-    }
+    if (result.bullets.length > 0) parts.push(result.bullets.map(b => `• ${b}`).join("\n"))
+    if (result.stats.length > 0) parts.push("Key data points:\n" + result.stats.map(s => `• ${s}`).join("\n"))
+    if (result.summary) parts.push(`Summary:\n${result.summary}`)
     setPostExperience(parts.join("\n\n"))
     setPostTopic(result.title || "")
     setPostContext(result.source_url?.startsWith("http") ? `Source: ${result.source_url}` : "")
@@ -113,7 +210,7 @@ export default function ResearchPage() {
     setActiveTab("post")
   }
 
-  // --- Write Post handlers ---
+  // ── Write Post handlers ──
   const handleGeneratePost = async () => {
     if (!postTopic.trim() || !postExperience.trim()) return
     setGeneratingPost(true)
@@ -142,25 +239,326 @@ export default function ResearchPage() {
     }
   }
 
-  const handleCopy = () => {
-    if (!generatedPost) return
-    navigator.clipboard.writeText(generatedPost)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+  const currentStageIdx = STAGES.findIndex(s => s.key === digestStage)
+  const sentimentColors: Record<string, string> = {
+    positive: "text-emerald-400 border-emerald-500/30",
+    negative: "text-red-400 border-red-500/30",
+    neutral: "text-muted-foreground border-border",
+    mixed: "text-yellow-400 border-yellow-500/30",
   }
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground tracking-tight">Research</h1>
-        <p className="text-muted-foreground mt-1">Summarize articles & PDFs, or write data-driven posts from research insights.</p>
+        <p className="text-muted-foreground mt-1">Weekly market intelligence digest, article summarizer, and research-driven post writer.</p>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2 max-w-xs">
+        <TabsList className="grid w-full grid-cols-3 max-w-sm">
+          <TabsTrigger value="digest"><Newspaper className="mr-1.5 h-3.5 w-3.5" />News Digest</TabsTrigger>
           <TabsTrigger value="summarize">Summarize</TabsTrigger>
           <TabsTrigger value="post">Write Post</TabsTrigger>
         </TabsList>
+
+        {/* ── Digest Tab ── */}
+        <TabsContent value="digest" className="mt-6 space-y-5">
+          {/* Header card */}
+          <Card className="bg-card border-border">
+            <CardContent className="pt-6 pb-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-foreground">Weekly Market Intelligence</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {getWeekRange()} · Synthesizes all web news and Reddit posts from the last 7 days into a structured report.
+                  </p>
+                </div>
+                <Button
+                  onClick={handleGenerateDigest}
+                  disabled={generating}
+                  size="lg"
+                  className="shrink-0"
+                >
+                  {generating ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating…</>
+                  ) : (
+                    <><Newspaper className="mr-2 h-4 w-4" />Generate Digest</>
+                  )}
+                </Button>
+              </div>
+
+              {/* Progress bar */}
+              {generating && (
+                <div className="mt-6 space-y-3">
+                  <div className="flex gap-2">
+                    {STAGES.map((stage, i) => (
+                      <div key={stage.key} className="flex-1">
+                        <div className={`h-1 rounded-full transition-all ${
+                          i < currentStageIdx ? "bg-emerald-500" :
+                          i === currentStageIdx ? "bg-indigo-500 animate-pulse" :
+                          "bg-muted"
+                        }`} />
+                        <p className={`text-xs mt-1.5 ${i === currentStageIdx ? "text-foreground" : "text-muted-foreground"}`}>
+                          {stage.label}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  {digestMessage && <p className="text-xs text-muted-foreground">{digestMessage}</p>}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Results */}
+          {digest && (
+            <>
+              {/* Stats bar */}
+              <div className="grid grid-cols-4 gap-3">
+                {[
+                  { label: "Web Articles", value: digest.webCount, icon: <TrendingUp className="h-4 w-4" /> },
+                  { label: "Reddit Posts", value: digest.redditCount, icon: <MessageSquare className="h-4 w-4" /> },
+                  { label: "Total Upvotes", value: digest.totalUpvotes.toLocaleString(), icon: <ThumbsUp className="h-4 w-4" /> },
+                  { label: "Total Comments", value: digest.totalComments.toLocaleString(), icon: <MessageSquare className="h-4 w-4" /> },
+                ].map((stat) => (
+                  <Card key={stat.label} className="bg-card border-border">
+                    <CardContent className="pt-4 pb-4">
+                      <div className="flex items-center gap-2 text-muted-foreground mb-1">{stat.icon}<span className="text-xs">{stat.label}</span></div>
+                      <p className="text-2xl font-bold text-foreground">{stat.value}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Web Findings */}
+              <Card className="bg-card border-border">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs text-indigo-400 border-indigo-500/30">Web Intelligence</Badge>
+                  </div>
+                  <CardTitle className="text-base mt-2">{digest.webSynthesis.headline}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    {digest.webSynthesis.keyFindings?.map((f, i) => (
+                      <div key={i} className="flex gap-2.5">
+                        <span className="text-indigo-400 shrink-0 mt-0.5">·</span>
+                        <span className="text-sm text-muted-foreground">{f}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {digest.webSynthesis.notableStats?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Key Data Points</p>
+                      <div className="grid gap-2">
+                        {digest.webSynthesis.notableStats.map((s, i) => (
+                          <div key={i} className="rounded bg-muted/50 px-3 py-2 text-sm font-medium text-foreground">{s}</div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {digest.webSynthesis.trendingTopics?.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {digest.webSynthesis.trendingTopics.map((t, i) => (
+                        <Badge key={i} variant="secondary" className="text-xs">{t}</Badge>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Reddit Pulse */}
+              <Card className="bg-card border-border">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs text-orange-400 border-orange-500/30">Reddit Pulse</Badge>
+                    {digest.redditPulse.sentiment && (
+                      <Badge variant="outline" className={`text-xs capitalize ${sentimentColors[digest.redditPulse.sentiment]}`}>
+                        {digest.redditPulse.sentiment}
+                      </Badge>
+                    )}
+                  </div>
+                  <CardTitle className="text-base mt-2">{digest.redditPulse.headline}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Community Pain Points</p>
+                    <div className="space-y-2">
+                      {digest.redditPulse.communityPainPoints?.map((p, i) => (
+                        <div key={i} className="flex gap-2.5">
+                          <span className="text-orange-400 shrink-0 mt-0.5">·</span>
+                          <span className="text-sm text-muted-foreground">{p}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {digest.redditPulse.topDiscussions?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Top Discussions</p>
+                      <div className="space-y-1">
+                        {digest.redditPulse.topDiscussions.slice(0, 5).map((d, i) => (
+                          <div key={i} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
+                            <p className="flex-1 text-sm text-foreground line-clamp-1">{d.title}</p>
+                            <span className="text-xs text-muted-foreground shrink-0">▲ {d.upvotes ?? 0}</span>
+                            <span className="text-xs text-muted-foreground shrink-0">💬 {d.comments ?? 0}</span>
+                            {d.url && (
+                              <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground shrink-0">
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {digest.redditPulse.keyInsights?.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Key Insights</p>
+                      <div className="space-y-2">
+                        {digest.redditPulse.keyInsights.map((ins, i) => (
+                          <div key={i} className="flex gap-2.5">
+                            <span className="text-orange-400 shrink-0 mt-0.5">→</span>
+                            <span className="text-sm text-muted-foreground">{ins}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Harvey Angle */}
+              <Card className="bg-card border-border">
+                <CardHeader className="pb-3">
+                  <Badge variant="outline" className="text-xs text-emerald-400 border-emerald-500/30 w-fit">How Harvey Helps</Badge>
+                  <CardTitle className="text-base mt-2">{digest.harveyAngle.headline}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {digest.harveyAngle.relevancePoints?.map((p, i) => (
+                    <div key={i} className="flex gap-3">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-xs font-bold text-emerald-400 shrink-0 mt-0.5">{i + 1}</span>
+                      <span className="text-sm text-muted-foreground">{p}</span>
+                    </div>
+                  ))}
+                  {digest.harveyAngle.callToAction && (
+                    <div className="mt-4 rounded-lg bg-indigo-500/10 border border-indigo-500/20 px-4 py-3">
+                      <p className="text-sm font-medium text-indigo-400">{digest.harveyAngle.callToAction}</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Key Sources */}
+              {digest.webSynthesis.sources?.length > 0 && (
+                <Card className="bg-card border-border">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Key Sources</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {digest.webSynthesis.sources.slice(0, 10).map((src, i) => (
+                        <div key={i} className="flex items-start gap-3">
+                          <Badge variant="outline" className="text-xs shrink-0 mt-0.5">{src.publication}</Badge>
+                          <div className="min-w-0">
+                            <p className="text-sm text-foreground line-clamp-1">{src.title}</p>
+                            {src.url && (
+                              <a href={src.url} target="_blank" rel="noopener noreferrer"
+                                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 mt-0.5">
+                                <ExternalLink className="h-2.5 w-2.5" />
+                                <span className="truncate">{src.url}</span>
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* LinkedIn Post */}
+              {digest.linkedinPost && (
+                <Card className="bg-card border-border">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base">LinkedIn Post — Ready to Copy</CardTitle>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          navigator.clipboard.writeText(digest.linkedinPost)
+                          setCopiedPost(true)
+                          setTimeout(() => setCopiedPost(false), 2000)
+                        }}
+                      >
+                        {copiedPost ? <><Check className="mr-2 h-3 w-3 text-emerald-400" />Copied</> : <><Copy className="mr-2 h-3 w-3" />Copy</>}
+                      </Button>
+                    </div>
+                    <CardDescription>Hook + body + hashtags — paste directly into LinkedIn</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <pre className="text-sm whitespace-pre-wrap font-sans leading-relaxed text-foreground bg-muted/30 rounded-lg p-4">
+                      {digest.linkedinPost}
+                    </pre>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* PDF Download */}
+              <Card className="bg-card border-border">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Download Report as PDF</CardTitle>
+                  <CardDescription>5-page report: Cover · Web Findings · Reddit Pulse · Harvey Angle · Sources</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">Choose Design</p>
+                    <div className="flex gap-3">
+                      {PDF_THEMES.map((theme) => (
+                        <button
+                          key={theme.id}
+                          onClick={() => setSelectedTheme(theme.id)}
+                          title={theme.label}
+                          className={`flex flex-col items-center gap-1.5 rounded-lg p-1.5 transition-all ${
+                            selectedTheme === theme.id
+                              ? "ring-2 ring-offset-2 ring-offset-card ring-foreground"
+                              : "opacity-60 hover:opacity-100"
+                          }`}
+                        >
+                          <div className="w-16 h-16 rounded-md flex flex-col overflow-hidden" style={{ backgroundColor: theme.bg }}>
+                            <div style={{ height: 3, backgroundColor: theme.accent, flexShrink: 0 }} />
+                            <div className="flex-1 flex flex-col justify-center px-2 gap-1">
+                              <div style={{ height: 3, borderRadius: 2, backgroundColor: theme.text, opacity: 0.9, width: "70%" }} />
+                              <div style={{ height: 2, borderRadius: 2, backgroundColor: theme.text, opacity: 0.4, width: "55%" }} />
+                              <div style={{ height: 2, borderRadius: 2, backgroundColor: theme.text, opacity: 0.4, width: "40%" }} />
+                              <div style={{ height: 2, borderRadius: 1, backgroundColor: theme.accent, width: "30%", marginTop: 3 }} />
+                            </div>
+                          </div>
+                          <span className="text-xs text-muted-foreground">{theme.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <Button onClick={handleDownloadPdf} disabled={downloadingPdf} size="lg">
+                    {downloadingPdf
+                      ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating PDF…</>
+                      : <><Download className="mr-2 h-4 w-4" />Download PDF</>
+                    }
+                  </Button>
+                </CardContent>
+              </Card>
+            </>
+          )}
+
+          {!generating && !digest && (
+            <div className="flex flex-col items-center justify-center py-20 text-center border border-dashed border-border rounded-lg">
+              <Newspaper className="h-10 w-10 text-muted-foreground/30 mb-4" />
+              <p className="text-sm font-medium text-muted-foreground">No digest generated yet</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-xs">Click "Generate Digest" to synthesize this week's trends into a market intelligence report.</p>
+              <p className="text-xs text-muted-foreground mt-3">Make sure to refresh the dashboard first to get the latest trends.</p>
+            </div>
+          )}
+        </TabsContent>
 
         {/* ── Summarize Tab ── */}
         <TabsContent value="summarize" className="mt-6 space-y-6">
@@ -176,15 +574,11 @@ export default function ResearchPage() {
                   <TabsTrigger value="pdf"><FileText className="mr-2 h-3 w-3" />PDF</TabsTrigger>
                 </TabsList>
               </Tabs>
-
               {summarizeMode === "url" ? (
                 <div className="flex gap-2">
-                  <Input
-                    value={summarizeUrl}
-                    onChange={(e) => setSummarizeUrl(e.target.value)}
+                  <Input value={summarizeUrl} onChange={(e) => setSummarizeUrl(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleSummarizeUrl()}
-                    placeholder="https://techcrunch.com/..."
-                  />
+                    placeholder="https://techcrunch.com/..." />
                   <Button onClick={handleSummarizeUrl} disabled={!summarizeUrl.trim() || summarizing}>
                     {summarizing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Summarize"}
                   </Button>
@@ -193,29 +587,24 @@ export default function ResearchPage() {
                 <div>
                   <input ref={pdfInputRef} type="file" accept=".pdf" className="hidden" onChange={handleSummarizePdf} />
                   <Button variant="outline" onClick={() => pdfInputRef.current?.click()} disabled={summarizing}>
-                    {summarizing ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Summarizing...</> : <><FileText className="mr-2 h-4 w-4" />Choose PDF</>}
+                    {summarizing ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Summarizing…</> : <><FileText className="mr-2 h-4 w-4" />Choose PDF</>}
                   </Button>
                 </div>
               )}
             </CardContent>
           </Card>
-
           {summarizing && !summaryResult && (
             <div className="flex items-center justify-center py-12 text-muted-foreground gap-2">
-              <Loader2 className="h-5 w-5 animate-spin" />
-              <span className="text-sm">Summarizing...</span>
+              <Loader2 className="h-5 w-5 animate-spin" /><span className="text-sm">Summarizing…</span>
             </div>
           )}
-
           {summaryResult && (
             <Card className="bg-card border-border">
               <CardHeader>
                 <CardTitle className="text-base">{summaryResult.title}</CardTitle>
-                {summaryResult.source_url && summaryResult.source_url.startsWith("http") && (
+                {summaryResult.source_url?.startsWith("http") && (
                   <CardDescription>
-                    <a href={summaryResult.source_url} target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground truncate block">
-                      {summaryResult.source_url}
-                    </a>
+                    <a href={summaryResult.source_url} target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground truncate block">{summaryResult.source_url}</a>
                   </CardDescription>
                 )}
               </CardHeader>
@@ -243,8 +632,7 @@ export default function ResearchPage() {
                 )}
                 <div className="pt-2 border-t border-border">
                   <Button variant="outline" size="sm" onClick={() => prefillFromSummary(summaryResult)}>
-                    <ArrowRight className="mr-2 h-3 w-3" />
-                    Write Post from this
+                    <ArrowRight className="mr-2 h-3 w-3" />Write Post from this
                   </Button>
                 </div>
               </CardContent>
@@ -256,25 +644,19 @@ export default function ResearchPage() {
         <TabsContent value="post" className="mt-6">
           <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
             <Card className="bg-card border-border">
-              <CardHeader>
-                <CardTitle className="text-base">Post Settings</CardTitle>
-              </CardHeader>
+              <CardHeader><CardTitle className="text-base">Post Settings</CardTitle></CardHeader>
               <CardContent className="space-y-5">
                 <div className="space-y-2">
                   <Label className="text-sm text-muted-foreground">Topic</Label>
                   <Input value={postTopic} onChange={(e) => setPostTopic(e.target.value)} placeholder="e.g. Why cold email still works in 2026" />
                 </div>
-
                 <div className="space-y-2">
                   <Label className="text-sm text-muted-foreground">Tone</Label>
                   <Select value={postTone} onValueChange={(v) => setPostTone(v as Tone)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {tones.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                    </SelectContent>
+                    <SelectContent>{tones.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
-
                 <div className="space-y-2">
                   <Label className="text-sm text-muted-foreground">Post Size</Label>
                   <Tabs value={postSize} onValueChange={(v) => setPostSize(v as "Short" | "Medium" | "Long")}>
@@ -284,69 +666,39 @@ export default function ResearchPage() {
                       <TabsTrigger value="Long">Long</TabsTrigger>
                     </TabsList>
                   </Tabs>
-                  <p className="text-xs text-muted-foreground">
-                    {postSize === "Short" && "400–600 characters · punchy & concise"}
-                    {postSize === "Medium" && "700–1000 characters · balanced depth"}
-                    {postSize === "Long" && "1200–1800 characters · full analysis & data"}
-                  </p>
                 </div>
-
                 <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground">
-                    Research insights & data points <span className="text-destructive">*</span>
-                  </Label>
-                  <Textarea
-                    value={postExperience}
-                    onChange={(e) => setPostExperience(e.target.value)}
-                    placeholder="Paste key statistics, findings, data points, or research notes here. The more specific the numbers, the stronger the post."
-                    className="resize-none text-sm min-h-[140px]"
-                  />
+                  <Label className="text-sm text-muted-foreground">Research insights & data points <span className="text-destructive">*</span></Label>
+                  <Textarea value={postExperience} onChange={(e) => setPostExperience(e.target.value)}
+                    placeholder="Paste key statistics, findings, data points, or research notes here."
+                    className="resize-none text-sm min-h-[140px]" />
                 </div>
-
                 <div className="space-y-2">
                   <Label className="text-sm text-muted-foreground">Additional context <span className="text-xs">(optional)</span></Label>
-                  <Textarea
-                    value={postContext}
-                    onChange={(e) => setPostContext(e.target.value)}
-                    placeholder="Source URL, extra context, angle to emphasize..."
-                    className="resize-none text-sm min-h-[60px]"
-                  />
+                  <Textarea value={postContext} onChange={(e) => setPostContext(e.target.value)}
+                    placeholder="Source URL, extra context, angle to emphasize…"
+                    className="resize-none text-sm min-h-[60px]" />
                 </div>
-
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <Label className="text-sm text-muted-foreground">Humanity Level</Label>
                     <span className="text-xs text-muted-foreground">{humanityLabels[postHumanity[0]]}</span>
                   </div>
                   <Slider value={postHumanity} onValueChange={setPostHumanity} min={1} max={5} step={1} />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Polished</span><span>Human</span>
-                  </div>
                 </div>
-
                 <div className="flex items-center space-x-2">
                   <Switch id="harvey" checked={includeHarvey} onCheckedChange={setIncludeHarvey} />
-                  <Label htmlFor="harvey" className="text-sm text-muted-foreground cursor-pointer">
-                    Include Harvey angle
-                  </Label>
+                  <Label htmlFor="harvey" className="text-sm text-muted-foreground cursor-pointer">Include Harvey angle</Label>
                 </div>
-
-                <Button
-                  onClick={handleGeneratePost}
-                  disabled={generatingPost || !postTopic.trim() || !postExperience.trim()}
-                  className="w-full"
-                  size="lg"
-                >
-                  {generatingPost ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Writing...</> : <><PenLine className="mr-2 h-4 w-4" />Write Post</>}
+                <Button onClick={handleGeneratePost} disabled={generatingPost || !postTopic.trim() || !postExperience.trim()} className="w-full" size="lg">
+                  {generatingPost ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Writing…</> : <><PenLine className="mr-2 h-4 w-4" />Write Post</>}
                 </Button>
               </CardContent>
             </Card>
-
             <div>
               {generatingPost && !generatedPost && (
                 <div className="flex items-center justify-center h-full min-h-[200px] text-muted-foreground gap-2">
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  <span className="text-sm">Writing your post...</span>
+                  <Loader2 className="h-5 w-5 animate-spin" /><span className="text-sm">Writing your post…</span>
                 </div>
               )}
               {generatedPost && (
@@ -354,7 +706,7 @@ export default function ResearchPage() {
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-base">Generated Post</CardTitle>
-                      <Button variant="outline" size="sm" onClick={handleCopy}>
+                      <Button variant="outline" size="sm" onClick={() => { navigator.clipboard.writeText(generatedPost); setCopied(true); setTimeout(() => setCopied(false), 2000) }}>
                         {copied ? <><Check className="mr-2 h-3 w-3" />Copied</> : <><Copy className="mr-2 h-3 w-3" />Copy</>}
                       </Button>
                     </div>
