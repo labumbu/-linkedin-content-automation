@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
+import { supabase } from "@/lib/supabase/client"
 import { getSettings, getKnowledgeBase, buildSystemPrompt } from "@/lib/settings"
 import { generatePosts, resolveProvider, AIProvider } from "@/lib/ai"
-import { Tone } from "@/lib/types"
+import { Tone, DigestResult } from "@/lib/types"
 
 const toneInstructions: Record<Tone, string> = {
   "Direct & Bold": "Be direct and bold. State strong opinions without hedging. Own the perspective.",
@@ -27,11 +28,29 @@ const sizeInstructions: Record<string, string> = {
 }
 
 export async function POST(req: NextRequest) {
-  const { topic, tone, experience, context, humanityLevel = 3, postSize = "Medium", includeHarvey = false } = await req.json()
+  const { digestId, tone, humanityLevel = 3, postSize = "Medium", includeHarvey = false } = await req.json()
 
-  if (!topic || !experience) {
-    return NextResponse.json({ error: "topic and research notes are required" }, { status: 400 })
+  if (!digestId) {
+    return NextResponse.json({ error: "digestId is required" }, { status: 400 })
   }
+
+  // Load the digest from Supabase
+  const { data: digestRow, error: dbError } = await supabase
+    .from("digests")
+    .select("digest_json")
+    .eq("id", digestId)
+    .single()
+
+  if (dbError || !digestRow) {
+    return NextResponse.json({ error: "Digest not found" }, { status: 404 })
+  }
+
+  const digest = digestRow.digest_json as DigestResult
+  const { weekRange, webSynthesis, redditPulse, harveyAngle } = digest
+
+  const findings = webSynthesis.keyFindings?.slice(0, 6).map((f) => `• ${f}`).join("\n") || "No specific findings."
+  const stats = webSynthesis.notableStats?.join(", ") || "No specific stats."
+  const painPoints = redditPulse.communityPainPoints?.slice(0, 5).map((p) => `• ${p}`).join("\n") || "No specific pain points."
 
   const [settings, knowledgeItems] = await Promise.all([getSettings(), getKnowledgeBase()])
   const provider = resolveProvider(settings?.ai_provider as AIProvider)
@@ -41,27 +60,32 @@ export async function POST(req: NextRequest) {
   const humanityInstruction = humanityInstructions[Math.min(5, Math.max(1, Math.round(humanityLevel)))]
   const sizeInstruction = sizeInstructions[postSize] ?? sizeInstructions["Medium"]
 
-  const contextBlock = context?.trim()
-    ? `\n\nAdditional context:\n${context.trim()}`
-    : ""
-
   const harveyInstruction = includeHarvey
-    ? `\nHarvey angle: Weave in one natural connection to Harvey's value proposition — Harvey is an AI copilot for B2B sales teams that closes the full loop: prospecting, outreach, follow-up, and pipeline in one place. Position it as a solution to the problem the data highlights. One mention max. Do NOT make Harvey the focus of the post.`
-    : `\nDo NOT mention Harvey, any specific AI tool, or any company by name. Pure data and insight only.`
+    ? `Harvey angle: Weave in one natural connection to Harvey's value proposition — Harvey is an AI copilot for B2B sales teams that closes the full loop: prospecting, outreach, follow-up, and pipeline in one place. Position it as a solution to the problem the data highlights. One mention max. Do NOT make Harvey the focus of the post.`
+    : `Do NOT mention Harvey, any specific AI tool, or any company by name. Pure data and insight only.`
 
-  const userPrompt = `Write a single data-driven LinkedIn post on this topic: "${topic}"
+  const harveyPoints = harveyAngle.relevancePoints?.slice(0, 3).join("; ") ?? ""
 
-Ground the post in these research insights, data points, and observations:
-${experience}
-${contextBlock}
+  const userPrompt = `Write a single data-driven LinkedIn post grounded in this week's market intelligence report.
+
+WEEK: ${weekRange}
+
+KEY FINDINGS FROM THE WEEK:
+${findings}
+
+NOTABLE STATS: ${stats}
+
+COMMUNITY PULSE: ${redditPulse.headline}
+PRACTITIONER PAIN POINTS:
+${painPoints}
+${includeHarvey && harveyPoints ? `\nHARVEY RELEVANCE: ${harveyPoints}` : ""}
 
 Writing rules:
-- Hook (first 1–2 lines): 6–10 words maximum — a specific number, bold finding, or counterintuitive fact. Not an opinion. This line determines 90% of reach.
+- Hook (first 1–2 lines): 6–10 words maximum — a specific number, bold finding, or counterintuitive fact from the data above. Not an opinion. This line determines 90% of reach.
 - Sentences under 12 words throughout the body (+20% engagement — research-backed)
 - Open with a striking statistic, surprising finding, or counterintuitive pattern — not an opinion, a FACT
-- Every claim must feel backed by evidence, data, or a recognizable industry pattern
+- Every claim must feel backed by evidence from the findings above
 - Use specific numbers wherever possible: percentages, dollar amounts, timeframes, ratios
-- Replace vague language ("many companies", "most teams") with specific observations
 - Short paragraphs. One idea per paragraph. Aggressive white space for LinkedIn readability.
 - End with a provocative insight or question that challenges conventional thinking
 

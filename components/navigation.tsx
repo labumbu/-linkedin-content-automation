@@ -8,7 +8,7 @@ import { LayoutDashboard, PenLine, History, Settings, Search, MessageSquare } fr
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/generate", label: "Generate Posts", icon: PenLine },
-  { href: "/research", label: "Research", icon: Search },
+  { href: "/research", label: "News Digest", icon: Search },
   { href: "/comments", label: "Comments", icon: MessageSquare },
   { href: "/history", label: "History", icon: History },
   { href: "/settings", label: "Settings", icon: Settings },

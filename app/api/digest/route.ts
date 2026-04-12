@@ -5,14 +5,20 @@ import { generatePosts, resolveProvider, AIProvider } from "@/lib/ai"
 import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit"
 import { DigestResult } from "@/lib/types"
 
-function getWeekRange(): { start: Date; end: Date; label: string } {
+function getWeekRange(weekStart?: string | null): { start: Date; end: Date; label: string } {
+  const fmt = (d: Date) =>
+    d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+  if (weekStart) {
+    const start = new Date(weekStart)
+    const end = new Date(start)
+    end.setDate(end.getDate() + 7)
+    end.setHours(23, 59, 59, 999)
+    return { start, end, label: `${fmt(start)} – ${fmt(end)}` }
+  }
   const now = new Date()
-  // Last 7 days
   const start = new Date(now)
   start.setDate(start.getDate() - 7)
   start.setHours(0, 0, 0, 0)
-  const fmt = (d: Date) =>
-    d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
   return { start, end: now, label: `${fmt(start)} – ${fmt(now)}` }
 }
 
@@ -58,12 +64,14 @@ export async function GET(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        // 1. Fetch last 7 days of trends from Supabase
-        const { start } = getWeekRange()
+        // 1. Fetch trends for the requested week from Supabase
+        const weekStart = req.nextUrl.searchParams.get("weekStart")
+        const { start, end, label: weekLabel } = getWeekRange(weekStart)
         const { data: trends, error } = await supabase
           .from("trends")
           .select("*")
           .gte("found_at", start.toISOString())
+          .lte("found_at", end.toISOString())
           .order("found_at", { ascending: false })
           .limit(200)
 
@@ -83,7 +91,7 @@ export async function GET(req: NextRequest) {
         })
 
         if (allTrends.length === 0) {
-          send(controller, { type: "error", message: "No trends found for the last 7 days. Try refreshing the dashboard first." })
+          send(controller, { type: "error", message: "No trends found for this period. Try a different week or refresh the dashboard first." })
           controller.close()
           return
         }
@@ -225,10 +233,8 @@ Return ONLY the post text. No explanation, no JSON.`
 
         const linkedinPost = await generatePosts(systemPrompt, linkedinPrompt, provider).catch(() => "")
 
-        const { label: weekRange } = getWeekRange()
-
         const digest: DigestResult = {
-          weekRange,
+          weekRange: weekLabel,
           generatedAt: new Date().toISOString(),
           webCount: webTrends.length,
           redditCount: redditTrends.length,
@@ -240,7 +246,27 @@ Return ONLY the post text. No explanation, no JSON.`
           linkedinPost: linkedinPost.trim(),
         }
 
-        send(controller, { type: "complete", digest })
+        // Save to Supabase (best-effort — don't block the stream if table doesn't exist yet)
+        let digestId: string | null = null
+        try {
+          const { data: saved } = await supabase
+            .from("digests")
+            .insert({
+              week_range: digest.weekRange,
+              generated_at: digest.generatedAt,
+              web_count: digest.webCount,
+              reddit_count: digest.redditCount,
+              headline: digest.webSynthesis.headline,
+              digest_json: digest,
+            })
+            .select("id")
+            .single()
+          digestId = saved?.id ?? null
+        } catch {
+          // table may not exist yet — silently skip
+        }
+
+        send(controller, { type: "complete", digest, digestId })
         controller.close()
       } catch (err) {
         console.error("Digest API error:", err)

@@ -43,7 +43,7 @@ export default function DashboardPage() {
             {"What's trending in AI Sales right now"}
           </h1>
           <p className="text-muted-foreground mt-1">
-            Discover hot topics and generate on-brand LinkedIn posts
+            Discover hot topics and generate on-brand LinkedIn posts and Reddit comments
           </p>
         </div>
         <Button
