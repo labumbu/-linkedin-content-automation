@@ -66,35 +66,37 @@ export async function POST(req: NextRequest) {
 
   const harveyPoints = harveyAngle.relevancePoints?.slice(0, 3).join("; ") ?? ""
 
-  const userPrompt = `Write a single data-driven LinkedIn post grounded in this week's market intelligence report.
+  const userPrompt = `You are writing a LinkedIn post that positions you as a trusted curator and analyst of B2B sales & AI news.
 
-WEEK: ${weekRange}
+The post must read like a weekly news roundup — it synthesises the most important developments from web news AND what practitioners are actually saying on Reddit this week. It should feel like a smart briefing, not a generic opinion piece.
 
-KEY FINDINGS FROM THE WEEK:
+WEEK COVERED: ${weekRange}
+
+TOP WEB NEWS THIS WEEK:
 ${findings}
 
-NOTABLE STATS: ${stats}
+NOTABLE STATS FROM THE NEWS: ${stats}
 
-COMMUNITY PULSE: ${redditPulse.headline}
-PRACTITIONER PAIN POINTS:
+WHAT PRACTITIONERS ARE SAYING ON REDDIT THIS WEEK:
+Headline: ${redditPulse.headline}
+Pain points & discussions:
 ${painPoints}
-${includeHarvey && harveyPoints ? `\nHARVEY RELEVANCE: ${harveyPoints}` : ""}
+${includeHarvey && harveyPoints ? `\nHOW HARVEY ADDRESSES THIS: ${harveyPoints}` : ""}
 
 Writing rules:
-- Hook (first 1–2 lines): 6–10 words maximum — a specific number, bold finding, or counterintuitive fact from the data above. Not an opinion. This line determines 90% of reach.
-- Sentences under 12 words throughout the body (+20% engagement — research-backed)
-- Open with a striking statistic, surprising finding, or counterintuitive pattern — not an opinion, a FACT
-- Every claim must feel backed by evidence from the findings above
-- Use specific numbers wherever possible: percentages, dollar amounts, timeframes, ratios
-- Short paragraphs. One idea per paragraph. Aggressive white space for LinkedIn readability.
-- End with a provocative insight or question that challenges conventional thinking
+- Hook (first 1–2 lines): 6–10 words — reference the week or a specific stat/finding. Must feel timely ("This week in B2B sales…" style or a specific number from the data).
+- Body: weave together 2–3 key web findings AND 1–2 Reddit community signals — make it clear these come from real market data this week
+- Sentences under 12 words. Short paragraphs. One idea per paragraph.
+- Specific numbers and named findings wherever possible — no vague generalisations
+- Tone: you are sharing what you learned this week, not writing a press release
+- End with a question that invites readers to share what they're seeing this week
 
 Tone instruction: ${toneInstruction}
 Size instruction: ${sizeInstruction}
 Humanity instruction: ${humanityInstruction}
 ${harveyInstruction}
 
-End with exactly 3–5 relevant hashtags on the last line. More than 5 hurts algorithmic reach.
+End with exactly 3–5 relevant hashtags on the last line.
 
 Return ONLY the post text. No explanation, no JSON, no preamble.`
 

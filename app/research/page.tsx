@@ -68,7 +68,6 @@ export default function ResearchPage() {
   const [digestStage, setDigestStage] = useState<string | null>(null)
   const [digestMessage, setDigestMessage] = useState("")
   const [digest, setDigest] = useState<DigestResult | null>(null)
-  const [copiedPost, setCopiedPost] = useState(false)
   const [selectedTheme, setSelectedTheme] = useState<PdfTheme>("dark")
   const [downloadingPdf, setDownloadingPdf] = useState(false)
 
@@ -452,34 +451,6 @@ export default function ResearchPage() {
                 </Card>
               )}
 
-              {/* LinkedIn Post */}
-              {digest.linkedinPost && (
-                <Card className="bg-card border-border">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-base">LinkedIn Post — Ready to Copy</CardTitle>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          navigator.clipboard.writeText(digest.linkedinPost)
-                          setCopiedPost(true)
-                          setTimeout(() => setCopiedPost(false), 2000)
-                        }}
-                      >
-                        {copiedPost ? <><Check className="mr-2 h-3 w-3 text-emerald-400" />Copied</> : <><Copy className="mr-2 h-3 w-3" />Copy</>}
-                      </Button>
-                    </div>
-                    <CardDescription>Hook + body + hashtags — paste directly into LinkedIn</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <pre className="text-sm whitespace-pre-wrap font-sans leading-relaxed text-foreground bg-muted/30 rounded-lg p-4">
-                      {digest.linkedinPost}
-                    </pre>
-                  </CardContent>
-                </Card>
-              )}
-
               {/* PDF Download */}
               <Card className="bg-card border-border">
                 <CardHeader className="pb-3">
@@ -540,7 +511,10 @@ export default function ResearchPage() {
         <TabsContent value="post" className="mt-6">
           <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
             <Card className="bg-card border-border">
-              <CardHeader><CardTitle className="text-base">Post Settings</CardTitle></CardHeader>
+              <CardHeader>
+                <CardTitle className="text-base">Post Settings</CardTitle>
+                <CardDescription>Generates a LinkedIn post summarising the key news and Reddit discussions from the selected digest period.</CardDescription>
+              </CardHeader>
               <CardContent className="space-y-5">
                 <div className="space-y-2">
                   <Label className="text-sm text-muted-foreground">Select Digest</Label>
@@ -628,7 +602,8 @@ export default function ResearchPage() {
                 <div className="flex items-center justify-center h-full min-h-[200px] border border-dashed border-border rounded-lg text-muted-foreground">
                   <div className="text-center space-y-2">
                     <PenLine className="h-8 w-8 mx-auto opacity-30" />
-                    <p className="text-sm">Select a digest and click Write Post</p>
+                    <p className="text-sm font-medium text-muted-foreground">Weekly news roundup post</p>
+                    <p className="text-xs text-muted-foreground max-w-xs">Select a digest and click Write Post to generate a LinkedIn post that positions you as a trusted curator of this week's B2B sales & AI news.</p>
                   </div>
                 </div>
               )}

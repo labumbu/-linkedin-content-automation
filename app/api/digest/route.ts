@@ -211,28 +211,6 @@ Based on these market findings, explain how Harvey directly addresses each trend
 
         send(controller, { type: "progress", stage: "harvey", message: "Building Harvey angle…" })
 
-        // 5. LinkedIn post
-        const linkedinPrompt = `Write a single LinkedIn post about this week's B2B sales & AI market intelligence report.
-
-Key findings this week:
-${webSynthesis.keyFindings?.slice(0, 4).join("\n") ?? "AI is changing B2B sales"}
-
-Reddit community pulse: ${redditPulse.headline}
-
-Harvey angle: ${harveyAngle.headline}
-
-Rules:
-- First 1-2 lines = killer hook (6-10 words, use a specific number or bold claim from the findings)
-- Short paragraphs, sentences under 12 words
-- Data-driven and direct
-- End with a specific provocative question that generates 15+ word replies
-- 3-5 relevant hashtags on the last line
-- 700-1000 characters total
-
-Return ONLY the post text. No explanation, no JSON.`
-
-        const linkedinPost = await generatePosts(systemPrompt, linkedinPrompt, provider).catch(() => "")
-
         const digest: DigestResult = {
           weekRange: weekLabel,
           generatedAt: new Date().toISOString(),
@@ -243,7 +221,6 @@ Return ONLY the post text. No explanation, no JSON.`
           webSynthesis,
           redditPulse,
           harveyAngle,
-          linkedinPost: linkedinPost.trim(),
         }
 
         // Save to Supabase (best-effort — don't block the stream if table doesn't exist yet)

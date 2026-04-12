@@ -60,7 +60,6 @@ export interface DigestResult {
     relevancePoints: string[]
     callToAction: string
   }
-  linkedinPost: string
 }
 
 export type Language = "EN" | "RU"
