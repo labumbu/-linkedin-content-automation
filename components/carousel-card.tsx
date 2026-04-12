@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Copy, Check, ChevronLeft, ChevronRight, Layers } from "lucide-react"
+import { Copy, Check, ChevronLeft, ChevronRight, Layers, Download, Loader2 } from "lucide-react"
 import { GeneratedPost } from "@/lib/types"
 
 interface CarouselCardProps {
@@ -15,6 +15,7 @@ export function CarouselCard({ post }: CarouselCardProps) {
   const [currentSlide, setCurrentSlide] = useState(0)
   const [copiedCaption, setCopiedCaption] = useState(false)
   const [copiedSlide, setCopiedSlide] = useState(false)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
 
   const slides = post.slides ?? []
   const slide = slides[currentSlide]
@@ -31,6 +32,30 @@ export function CarouselCard({ post }: CarouselCardProps) {
     await navigator.clipboard.writeText(text)
     setCopiedSlide(true)
     setTimeout(() => setCopiedSlide(false), 2000)
+  }
+
+  const handleDownloadPdf = async () => {
+    if (!slides.length) return
+    setDownloadingPdf(true)
+    try {
+      const res = await fetch("/api/generate/carousel-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slides, caption: post.content }),
+      })
+      if (!res.ok) throw new Error("PDF generation failed")
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `carousel-${post.id}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      // silent — user sees no change
+    } finally {
+      setDownloadingPdf(false)
+    }
   }
 
   const slideLabel = (n: number) => {
@@ -117,19 +142,34 @@ export function CarouselCard({ post }: CarouselCardProps) {
         <Badge variant="outline" className="text-xs text-muted-foreground">
           {slides.length} slides
         </Badge>
-        <Button onClick={handleCopyCaption} size="sm" variant="outline">
-          {copiedCaption ? (
-            <>
-              <Check className="mr-2 h-4 w-4 text-emerald-400" />
-              Copied
-            </>
-          ) : (
-            <>
-              <Copy className="mr-2 h-4 w-4" />
-              Copy caption
-            </>
-          )}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={handleCopyCaption} size="sm" variant="outline">
+            {copiedCaption ? (
+              <>
+                <Check className="mr-2 h-4 w-4 text-emerald-400" />
+                Copied
+              </>
+            ) : (
+              <>
+                <Copy className="mr-2 h-4 w-4" />
+                Copy caption
+              </>
+            )}
+          </Button>
+          <Button onClick={handleDownloadPdf} size="sm" variant="default" disabled={downloadingPdf}>
+            {downloadingPdf ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Download className="mr-2 h-4 w-4" />
+                Download PDF
+              </>
+            )}
+          </Button>
+        </div>
       </CardFooter>
     </Card>
   )

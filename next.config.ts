@@ -9,6 +9,7 @@ const nextConfig = {
   turbopack: {
     root: __dirname,
   },
+  serverExternalPackages: ["@react-pdf/renderer"],
 }
 
 export default nextConfig
