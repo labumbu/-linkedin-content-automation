@@ -21,7 +21,7 @@ app/
   page.tsx                        # Dashboard — fetches & displays trends with source filter
   generate/page.tsx               # Post generator with tone/size/humanity controls + streaming; Carousel format
   comments/page.tsx               # Reddit + LinkedIn comment generator + Find Threads tab + history
-  research/page.tsx               # Summarize URLs/PDFs + Write Post from research notes
+  research/page.tsx               # News Digest (default tab) + Summarize URLs/PDFs + Write Post
   history/page.tsx                # Saved posts (server component)
   settings/page.tsx               # Brand, Topics, News Sources, Knowledge Base, Examples, System Prompt tabs
   layout.tsx
@@ -37,6 +37,9 @@ app/
       route.ts                    # GET — list saved comments
     reddit/
       search/route.ts             # POST — search B2B subreddits for threads to comment on
+    digest/
+      route.ts                    # GET — streaming weekly digest (NDJSON); queries last 7 days of trends, 3 parallel AI calls; rate-limited 3/min
+      pdf/route.tsx               # POST — 5-page A4 digest PDF (Cover/Web/Reddit/Harvey/Sources); 4 themes; rate-limited 5/min
     research/
       run/route.ts                # POST — 5-stage research pipeline (streaming NDJSON)
       summarize/route.ts          # POST — summarize URL or PDF
@@ -114,6 +117,7 @@ CRON_SECRET=                # Any random string — used to secure /api/cron/tre
 - **Post generation**: Streams NDJSON (one JSON object per line, 400ms apart). Each post saved to Supabase mid-stream, `dbId` returned in stream. Returns `hookAlternatives` (3 swappable first lines) and `ctaNote` (CTA quality evaluation) per post.
 - **Carousel format**: PostSize "Carousel" triggers a different prompt — generates 7 slides (hook + 5 content + CTA) + companion caption. Response includes `format: "carousel"` and `slides[]` array. Rendered by `CarouselCard` component.
 - **Post scorer**: `POST /api/generate/score` — sends post content to AI, returns 4 dimension scores (0–25 each): hookStrength, dwellTime, commentMagnet, algorithmFit. `BarChart2` icon on each PostCard triggers it.
+- **News Digest**: `GET /api/digest` streams a weekly market intelligence report. Queries Supabase trends for last 7 days, splits into web + Reddit, runs 3 parallel AI calls (web synthesis, Reddit pulse, Harvey angle), then a 4th for a LinkedIn post. Streams NDJSON progress + final `DigestResult`. `POST /api/digest/pdf` generates a 5-page A4 PDF with 4 themes (Dark/Light/Navy/Forest). LinkedIn post is plain text only — NOT included in PDF.
 - **Voice learning**: `buildSystemPrompt()` separates examples by source. `source="own"` posts inject first as "YOUR OWN VOICE — match this exact writing style". `source="curated"` posts inject after as "STRUCTURAL TEMPLATES". Own: up to 4 (tone-prioritized). Combined budget: 8 total.
 - **Examples injection**: `getPostExamples()` returns all active examples ordered by reactions DESC. `buildSystemPrompt(settings, knowledgeItems, tone?)` injects up to 8 (5 own tone-match + 3 curated).
 - **Comment generation**: Reddit uses 5 PRD archetypes + compliance rules + authenticity rules (no AI-sounding patterns). LinkedIn uses 6 PRD archetypes. Both return recommended archetype (★).
