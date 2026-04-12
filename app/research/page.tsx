@@ -82,10 +82,9 @@ export default function ResearchPage() {
   const [digestList, setDigestList] = useState<DigestListItem[]>([])
   const [selectedDigestId, setSelectedDigestId] = useState("")
   const [digestListLoading, setDigestListLoading] = useState(false)
+  const [loadingDigestId, setLoadingDigestId] = useState<string | null>(null)
 
-  // Load digest list when Write Post tab is activated
-  useEffect(() => {
-    if (activeTab !== "post") return
+  const loadDigestList = () => {
     setDigestListLoading(true)
     fetch("/api/digest/list")
       .then((r) => r.json())
@@ -98,7 +97,11 @@ export default function ResearchPage() {
       })
       .catch(() => {})
       .finally(() => setDigestListLoading(false))
-  }, [activeTab])
+  }
+
+  // Load digest list on mount (eslint-disable is intentional — loadDigestList is stable)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadDigestList() }, [])
 
   // ── Digest handlers ──
   const handleGenerateDigest = async () => {
@@ -132,6 +135,7 @@ export default function ResearchPage() {
               setDigestMessage(msg.message)
             } else if (msg.type === "complete") {
               setDigest(msg.digest)
+              loadDigestList()
             } else if (msg.type === "error") {
               toast({ title: "Digest failed", description: msg.message, variant: "destructive" })
             }
@@ -167,6 +171,21 @@ export default function ResearchPage() {
       toast({ title: "PDF generation failed", variant: "destructive" })
     } finally {
       setDownloadingPdf(false)
+    }
+  }
+
+  const handleLoadDigest = async (id: string) => {
+    setLoadingDigestId(id)
+    try {
+      const res = await fetch(`/api/digest/${id}`)
+      if (!res.ok) throw new Error()
+      const data = await res.json()
+      setDigest(data.digest)
+      setSelectedDigestId(id)
+    } catch {
+      toast({ title: "Failed to load digest", variant: "destructive" })
+    } finally {
+      setLoadingDigestId(null)
     }
   }
 
@@ -498,11 +517,48 @@ export default function ResearchPage() {
           )}
 
           {!generating && !digest && (
-            <div className="flex flex-col items-center justify-center py-20 text-center border border-dashed border-border rounded-lg">
-              <Newspaper className="h-10 w-10 text-muted-foreground/30 mb-4" />
-              <p className="text-sm font-medium text-muted-foreground">No digest generated yet</p>
-              <p className="text-xs text-muted-foreground mt-1 max-w-xs">Click "Generate Digest" to synthesize the selected week's trends into a market intelligence report.</p>
-              <p className="text-xs text-muted-foreground mt-3">Make sure to refresh the dashboard first to get the latest trends.</p>
+            <div className="space-y-4">
+              {/* Past digests */}
+              {digestList.length > 0 && (
+                <Card className="bg-card border-border">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">Past Digests</CardTitle>
+                    <CardDescription>Previously generated reports — click to view</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {digestList.map((d) => (
+                      <div key={d.id} className="flex items-center justify-between gap-4 px-6 py-3 border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-foreground">{d.week_range}</p>
+                          {d.headline && <p className="text-xs text-muted-foreground truncate mt-0.5">{d.headline}</p>}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleLoadDigest(d.id)}
+                          disabled={loadingDigestId === d.id}
+                          className="shrink-0"
+                        >
+                          {loadingDigestId === d.id
+                            ? <><Loader2 className="mr-2 h-3 w-3 animate-spin" />Loading…</>
+                            : "View"
+                          }
+                        </Button>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Empty state if no digests at all */}
+              {digestList.length === 0 && !digestListLoading && (
+                <div className="flex flex-col items-center justify-center py-20 text-center border border-dashed border-border rounded-lg">
+                  <Newspaper className="h-10 w-10 text-muted-foreground/30 mb-4" />
+                  <p className="text-sm font-medium text-muted-foreground">No digests yet</p>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-xs">Click "Generate Digest" to synthesize the selected week's trends into a market intelligence report.</p>
+                  <p className="text-xs text-muted-foreground mt-3">Make sure to refresh the dashboard first to get the latest trends.</p>
+                </div>
+              )}
             </div>
           )}
         </TabsContent>
