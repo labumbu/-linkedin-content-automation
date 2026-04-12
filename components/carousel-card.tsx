@@ -11,11 +11,21 @@ interface CarouselCardProps {
   post: GeneratedPost
 }
 
+type PdfTheme = "dark" | "light" | "navy" | "forest"
+
+const THEMES: { id: PdfTheme; label: string; bg: string; accent: string; text: string }[] = [
+  { id: "dark",   label: "Dark",   bg: "#0A0A0F", accent: "#6366F1", text: "#F8F8FF" },
+  { id: "light",  label: "Light",  bg: "#FFFFFF", accent: "#6366F1", text: "#0F0F1A" },
+  { id: "navy",   label: "Navy",   bg: "#0D1B2A", accent: "#F59E0B", text: "#F0F4F8" },
+  { id: "forest", label: "Forest", bg: "#0D1F17", accent: "#10B981", text: "#ECFDF5" },
+]
+
 export function CarouselCard({ post }: CarouselCardProps) {
   const [currentSlide, setCurrentSlide] = useState(0)
   const [copiedCaption, setCopiedCaption] = useState(false)
   const [copiedSlide, setCopiedSlide] = useState(false)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const [selectedTheme, setSelectedTheme] = useState<PdfTheme>("dark")
 
   const slides = post.slides ?? []
   const slide = slides[currentSlide]
@@ -41,18 +51,18 @@ export function CarouselCard({ post }: CarouselCardProps) {
       const res = await fetch("/api/generate/carousel-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slides, caption: post.content }),
+        body: JSON.stringify({ slides, caption: post.content, theme: selectedTheme }),
       })
       if (!res.ok) throw new Error("PDF generation failed")
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
-      a.download = `carousel-${post.id}.pdf`
+      a.download = `carousel-${selectedTheme}-${post.id}.pdf`
       a.click()
       URL.revokeObjectURL(url)
     } catch {
-      // silent — user sees no change
+      // silent
     } finally {
       setDownloadingPdf(false)
     }
@@ -137,7 +147,46 @@ export function CarouselCard({ post }: CarouselCardProps) {
             <p className="text-sm text-foreground">{post.content}</p>
           </div>
         )}
+
+        {/* PDF Theme picker */}
+        <div className="border-t border-border pt-4">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">PDF Design</p>
+          <div className="flex gap-2">
+            {THEMES.map((theme) => (
+              <button
+                key={theme.id}
+                onClick={() => setSelectedTheme(theme.id)}
+                title={theme.label}
+                className={`relative flex flex-col items-center gap-1.5 rounded-lg p-1.5 transition-all ${
+                  selectedTheme === theme.id
+                    ? "ring-2 ring-offset-2 ring-offset-card ring-foreground"
+                    : "opacity-70 hover:opacity-100"
+                }`}
+              >
+                {/* Mini slide preview */}
+                <div
+                  className="w-14 h-14 rounded-md flex flex-col overflow-hidden"
+                  style={{ backgroundColor: theme.bg }}
+                >
+                  {/* Accent stripe */}
+                  <div style={{ height: 3, backgroundColor: theme.accent, flexShrink: 0 }} />
+                  <div className="flex-1 flex flex-col justify-center px-2 gap-1">
+                    {/* Title line */}
+                    <div style={{ height: 3, borderRadius: 2, backgroundColor: theme.text, opacity: 0.9, width: "75%" }} />
+                    {/* Sub lines */}
+                    <div style={{ height: 2, borderRadius: 2, backgroundColor: theme.text, opacity: 0.4, width: "60%" }} />
+                    <div style={{ height: 2, borderRadius: 2, backgroundColor: theme.text, opacity: 0.4, width: "45%" }} />
+                    {/* Accent divider */}
+                    <div style={{ height: 2, borderRadius: 1, backgroundColor: theme.accent, width: "25%", marginTop: 2 }} />
+                  </div>
+                </div>
+                <span className="text-xs text-muted-foreground">{theme.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       </CardContent>
+
       <CardFooter className="flex items-center justify-between gap-4 border-t border-border pt-4">
         <Badge variant="outline" className="text-xs text-muted-foreground">
           {slides.length} slides
@@ -145,28 +194,16 @@ export function CarouselCard({ post }: CarouselCardProps) {
         <div className="flex items-center gap-2">
           <Button onClick={handleCopyCaption} size="sm" variant="outline">
             {copiedCaption ? (
-              <>
-                <Check className="mr-2 h-4 w-4 text-emerald-400" />
-                Copied
-              </>
+              <><Check className="mr-2 h-4 w-4 text-emerald-400" />Copied</>
             ) : (
-              <>
-                <Copy className="mr-2 h-4 w-4" />
-                Copy caption
-              </>
+              <><Copy className="mr-2 h-4 w-4" />Copy caption</>
             )}
           </Button>
           <Button onClick={handleDownloadPdf} size="sm" variant="default" disabled={downloadingPdf}>
             {downloadingPdf ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Generating...
-              </>
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating...</>
             ) : (
-              <>
-                <Download className="mr-2 h-4 w-4" />
-                Download PDF
-              </>
+              <><Download className="mr-2 h-4 w-4" />Download PDF</>
             )}
           </Button>
         </div>
