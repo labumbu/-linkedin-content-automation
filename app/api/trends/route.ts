@@ -198,9 +198,14 @@ export async function GET(req: NextRequest) {
     ])
     console.log(`[trends] Reddit posts fetched: ${redditPosts.length}`)
 
+    const timeout = <T>(ms: number, fallback: T): Promise<T> =>
+      new Promise((resolve) => setTimeout(() => resolve(fallback), ms))
+
     const [webTrends, redditTrends] = await Promise.allSettled([
-      fetchWebSearchTrends(topicClusters, provider),
-      redditPosts.length > 0 ? analyzeRedditTrends(redditPosts, provider) : Promise.resolve([]),
+      Promise.race([fetchWebSearchTrends(topicClusters, provider), timeout(30_000, [] as Trend[])]),
+      redditPosts.length > 0
+        ? Promise.race([analyzeRedditTrends(redditPosts, provider), timeout(15_000, [] as Trend[])])
+        : Promise.resolve([] as Trend[]),
     ])
 
     console.log("[trends] web:", webTrends.status === "fulfilled" ? webTrends.value.length + " trends" : "FAILED — " + webTrends.reason)
