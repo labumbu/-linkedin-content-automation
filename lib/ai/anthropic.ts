@@ -4,24 +4,21 @@ import { RedditPost } from "@/lib/reddit"
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-const SEARCH_TIMEOUT_MS = 25_000
-
-function fetchWithTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error("web_search timeout after " + ms + "ms")), ms)
-  })
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
-}
+const SEARCH_TIMEOUT_MS = 40_000
 
 export async function fetchWebSearchTrends(topicClusters: string[]): Promise<Trend[]> {
-  const response = await fetchWithTimeout(client.messages.create({
-    model: "claude-sonnet-4-6",
-    max_tokens: 2048,
-    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 4 } as any],
-    messages: [{
-      role: "user",
-      content: `Search for the top 10 trending topics RIGHT NOW in AI sales, B2B sales technology, and sales automation in 2026.
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(new Error("web_search timeout after " + SEARCH_TIMEOUT_MS + "ms")), SEARCH_TIMEOUT_MS)
+
+  let response: Awaited<ReturnType<typeof client.messages.create>>
+  try {
+    response = await client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 2048,
+      tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 } as any],
+      messages: [{
+        role: "user",
+        content: `Search for the top 10 trending topics RIGHT NOW in AI sales, B2B sales technology, and sales automation in 2026.
 
 Search for topics related to: ${topicClusters.join(", ")}.
 
@@ -31,8 +28,11 @@ Return ONLY a JSON array of exactly 10 trend objects with source_url where avail
 [{ "id": "ws-1", "title": "...", "summary": "...", "source": "Web Search", "relevanceScore": 8, "velocity": "hot", "source_url": "https://..." }]
 
 Rules: id prefixed "ws-", relevanceScore 0-10, velocity: hot/rising/stable. Return ONLY the JSON array.`,
-    }],
-  }), SEARCH_TIMEOUT_MS)
+      }],
+    }, { signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
 
   // Extract URLs from web_search_tool_result blocks
   const urlsByTitle = new Map<string, string>()
