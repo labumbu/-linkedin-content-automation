@@ -53,10 +53,13 @@ async function saveTrends(trends: Trend[]) {
 }
 
 async function loadSavedTrends(): Promise<Trend[]> {
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
   const { data, error } = await supabase
     .from("trends")
     .select("*")
+    .gte("found_at", since)
     .order("found_at", { ascending: false })
+    .limit(100)
 
   if (error || !data) return []
 
@@ -110,7 +113,7 @@ async function scrapeSourceContent(urls: string[]): Promise<string> {
     const scraped = await Promise.allSettled(
       staleUrls.map(async (url) => {
         const controller = new AbortController()
-        const timer = setTimeout(() => controller.abort(), 5000)
+        const timer = setTimeout(() => controller.abort(), 3000)
         try {
           const res = await fetch(url, {
             headers: { "User-Agent": "harvey-content-fabric/1.0.0" },
