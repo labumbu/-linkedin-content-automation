@@ -4,8 +4,18 @@ import { RedditPost } from "@/lib/reddit"
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
+const SEARCH_TIMEOUT_MS = 25_000
+
+function fetchWithTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("web_search timeout after " + ms + "ms")), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
 export async function fetchWebSearchTrends(topicClusters: string[]): Promise<Trend[]> {
-  const response = await client.messages.create({
+  const response = await fetchWithTimeout(client.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 2048,
     tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 4 } as any],
@@ -22,7 +32,7 @@ Return ONLY a JSON array of exactly 10 trend objects with source_url where avail
 
 Rules: id prefixed "ws-", relevanceScore 0-10, velocity: hot/rising/stable. Return ONLY the JSON array.`,
     }],
-  })
+  }), SEARCH_TIMEOUT_MS)
 
   // Extract URLs from web_search_tool_result blocks
   const urlsByTitle = new Map<string, string>()
