@@ -4,18 +4,14 @@ import { RedditPost } from "@/lib/reddit"
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-const SEARCH_TIMEOUT_MS = 40_000
-
 export async function fetchWebSearchTrends(topicClusters: string[]): Promise<Trend[]> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(new Error("web_search timeout after " + SEARCH_TIMEOUT_MS + "ms")), SEARCH_TIMEOUT_MS)
-
-  let response: Awaited<ReturnType<typeof client.messages.create>>
+  let response: any
   try {
-    response = await client.messages.create({
+    response = await client.beta.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 2048,
-      tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 } as any],
+      max_tokens: 4096,
+      betas: ["web-search-2025-03-05" as any],
+      tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 2 } as any],
       messages: [{
         role: "user",
         content: `Search for the top 10 trending topics RIGHT NOW in AI sales, B2B sales technology, and sales automation in 2026.
@@ -29,24 +25,28 @@ Return ONLY a JSON array of exactly 10 trend objects with source_url where avail
 
 Rules: id prefixed "ws-", relevanceScore 0-10, velocity: hot/rising/stable. Return ONLY the JSON array.`,
       }],
-    }, { signal: controller.signal })
-  } finally {
-    clearTimeout(timer)
+    })
+  } catch (err: any) {
+    console.error("[fetchWebSearchTrends] API call failed:", err?.status, err?.message, err?.error)
+    throw err
   }
+
+  const contentBlocks: any[] = Array.isArray(response.content) ? response.content : []
 
   // Extract URLs from web_search_tool_result blocks
   const urlsByTitle = new Map<string, string>()
-  for (const block of response.content) {
-    if ((block as any).type === "web_search_tool_result") {
-      for (const r of (block as any).content ?? []) {
+  for (const block of contentBlocks) {
+    if (block.type === "web_search_tool_result") {
+      const results = Array.isArray(block.content) ? block.content : []
+      for (const r of results) {
         if (r.url && r.title) urlsByTitle.set(r.title.toLowerCase(), r.url)
       }
     }
   }
 
   let jsonText = ""
-  for (const block of response.content) {
-    if (block.type === "text") { jsonText = block.text; break }
+  for (const block of contentBlocks) {
+    if (block.type === "text") { jsonText = block.text ?? ""; break }
   }
   const match = jsonText.match(/\[[\s\S]*\]/)
   if (!match) throw new Error("No JSON in response")
