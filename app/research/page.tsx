@@ -101,9 +101,11 @@ export default function ResearchPage() {
       .finally(() => { setDigestListLoading(false); setDigestListLoaded(true) })
   }
 
+  const [mounted, setMounted] = useState(false)
+
   // Load digest list on mount (eslint-disable is intentional — loadDigestList is stable)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { loadDigestList() }, [])
+  useEffect(() => { setMounted(true); loadDigestList() }, [])
 
   // ── Digest handlers ──
   const handleGenerateDigest = async () => {
@@ -273,7 +275,7 @@ export default function ResearchPage() {
                     >
                       <ChevronLeft className="h-4 w-4" />
                     </button>
-                    <span className="text-sm text-muted-foreground px-2 min-w-[210px] text-center">{weekInfo.label}</span>
+                    <span className="text-sm text-muted-foreground px-2 min-w-[210px] text-center" suppressHydrationWarning>{mounted ? weekInfo.label : ""}</span>
                     <button
                       onClick={() => { setWeekOffset((o) => o + 1); setDigest(null) }}
                       disabled={generating || weekOffset >= 0}
@@ -532,7 +534,7 @@ export default function ResearchPage() {
             </>
           )}
 
-          {!generating && !digest && digestListLoaded && (
+          {!generating && !digest && mounted && (
             <div className="space-y-4">
               {/* Past digests */}
               {digestList.length > 0 && (
