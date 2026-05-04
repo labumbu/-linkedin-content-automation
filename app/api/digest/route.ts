@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase/client"
 import { getSettings, getKnowledgeBase, buildSystemPrompt } from "@/lib/settings"
 import { generatePosts, resolveProvider, AIProvider } from "@/lib/ai"
 import { checkRateLimit, getRateLimitKey } from "@/lib/rate-limit"
-import { DigestResult } from "@/lib/types"
+import { DigestResult, WebFinding, PainPoint, HarveyRelevancePoint } from "@/lib/types"
 
 function getWeekRange(weekStart?: string | null): { start: Date; end: Date; label: string } {
   const fmt = (d: Date) =>
@@ -47,6 +47,40 @@ function inferPublication(url?: string | null): string {
   }
 }
 
+// Tier classification for source credibility
+function inferSourceTier(url?: string | null): "analyst" | "vendor" | "media" {
+  if (!url) return "media"
+  try {
+    const host = new URL(url).hostname.replace("www.", "")
+    const analystDomains = ["gartner.com", "forrester.com", "mckinsey.com", "hbr.org", "bcg.com", "bain.com", "deloitte.com", "accenture.com", "idc.com", "451research.com"]
+    const vendorDomains = ["salesforce.com", "hubspot.com", "outreach.io", "salesloft.com", "apollo.io", "clay.com", "lemlist.com", "gong.io", "clari.com"]
+    if (analystDomains.some(d => host.includes(d))) return "analyst"
+    if (vendorDomains.some(d => host.includes(d))) return "vendor"
+    return "media"
+  } catch {
+    return "media"
+  }
+}
+
+function tierLabel(url?: string | null): string {
+  const tier = inferSourceTier(url)
+  if (tier === "analyst") return "[Analyst]"
+  if (tier === "vendor") return "[Vendor Research]"
+  return "[Media]"
+}
+
+const parseJson = (raw: string, fallback: object) => {
+  if (!raw) return fallback
+  try {
+    const match = raw.match(/\{[\s\S]*\}/)
+    if (!match) return fallback
+    const parsed = JSON.parse(match[0])
+    return (parsed && Object.keys(parsed).length > 0) ? parsed : fallback
+  } catch {
+    return fallback
+  }
+}
+
 export async function GET(req: NextRequest) {
   const rl = checkRateLimit(getRateLimitKey(req, "digest"), 3, 60_000)
   if (!rl.allowed) {
@@ -64,7 +98,7 @@ export async function GET(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        // 1. Fetch trends for the requested week from Supabase
+        // 1. Fetch trends for the requested week
         const weekStart = req.nextUrl.searchParams.get("weekStart")
         const { start, end, label: weekLabel } = getWeekRange(weekStart)
         const { data: trends, error } = await supabase
@@ -78,7 +112,10 @@ export async function GET(req: NextRequest) {
         if (error) throw new Error("Failed to fetch trends: " + error.message)
 
         const allTrends = trends ?? []
-        const webTrends = allTrends.filter((t) => t.source !== "Reddit")
+        // Sort web trends by relevanceScore descending for signal prioritization
+        const webTrends = allTrends
+          .filter((t) => t.source !== "Reddit")
+          .sort((a, b) => (b.relevance_score ?? b.relevanceScore ?? 0) - (a.relevance_score ?? a.relevanceScore ?? 0))
         const redditTrends = allTrends.filter((t) => t.source === "Reddit")
 
         const totalComments = redditTrends.reduce((s, t) => s + (t.comments ?? 0), 0)
@@ -101,115 +138,323 @@ export async function GET(req: NextRequest) {
         const provider = resolveProvider(settings?.ai_provider as AIProvider)
         const systemPrompt = settings ? await buildSystemPrompt(settings, knowledgeItems) : ""
 
-        send(controller, { type: "progress", stage: "synthesizing", message: "Synthesizing web findings…" })
+        send(controller, { type: "progress", stage: "synthesizing", message: "Synthesizing web market signals…" })
 
-        // 3. Build context strings
+        // 3. Build context strings with tier labels and velocity tags
         const webContext = webTrends
-          .map((t) => `• [${inferPublication(t.source_url)}] ${t.title}: ${truncate(t.summary ?? "", 200)}${t.source_url ? ` (${t.source_url})` : ""}`)
+          .map((t) => {
+            const tier = tierLabel(t.source_url)
+            const vel = t.velocity === "hot" ? " [HOT]" : t.velocity === "rising" ? " [RISING]" : ""
+            const pub = inferPublication(t.source_url)
+            return `• ${tier}${vel} [${pub}] ${t.title}: ${truncate(t.summary ?? "", 250)}${t.source_url ? ` (${t.source_url})` : ""}`
+          })
           .join("\n")
 
+        // Extract subreddit from URL for reddit context
         const redditContext = redditTrends
-          .map((t) => `• r/${t.source_url?.match(/reddit\.com\/r\/([^/]+)/)?.[1] ?? "reddit"} | ${t.upvotes ?? 0} upvotes, ${t.comments ?? 0} comments — "${t.title}": ${truncate(t.summary ?? "", 200)}`)
+          .map((t) => {
+            const sub = t.source_url?.match(/reddit\.com\/r\/([^/]+)/)?.[1] ?? "reddit"
+            const engagement = (t.upvotes ?? 0) * 2 + (t.comments ?? 0) * 3
+            return `• r/${sub} | ↑${t.upvotes ?? 0} 💬${t.comments ?? 0} [score:${engagement}] — "${t.title}": ${truncate(t.summary ?? "", 250)}`
+          })
           .join("\n")
 
-        // 4. Three parallel AI calls
-        const webPrompt = `You are analyzing ${webTrends.length} web news items from this week about AI in B2B sales, outreach, and revenue operations.
+        // 4. Three parallel AI calls — deep chain-of-thought prompts
 
-NEWS ITEMS:
+        const webPrompt = `You are a senior B2B market analyst synthesizing ${webTrends.length} market signals for the week of ${weekLabel}.
+
+Your audience: VP Sales, CRO, and RevOps leaders at B2B SaaS companies who need intelligence to adjust strategy, prioritize accounts, and stay competitive. They have 3 minutes to read this. Make every word count.
+
+MARKET SIGNALS (format: [Tier] [Velocity] [Publication] Title: Summary | URL):
 ${webContext}
 
-Synthesize into a structured intelligence report. Return ONLY valid JSON:
+Source tiers: [Analyst] = Gartner/Forrester/McKinsey/HBR (highest credibility), [Vendor Research] = company-sponsored data, [Media] = trade press.
+Velocity: [HOT] = fastest moving signal this week, [RISING] = accelerating.
+
+ANALYSIS FRAMEWORK — for each key finding, apply "Signal → So What → Now What":
+- Signal: What specifically happened or was reported (with the source and a concrete data point if available)
+- So What: The strategic implication for B2B sales teams (one sharp sentence — not obvious, not generic)
+- Now What: The specific action or attention point this week (verb-led, concrete)
+
+Prioritize signals that reveal PATTERNS or STRATEGY SHIFTS. Deprioritize isolated vendor announcements with no broader signal.
+Sort findings by impact: most critical to revenue leaders first.
+
+Return ONLY valid JSON:
 {
-  "headline": "bold 8-12 word claim summarizing the biggest finding this week",
-  "keyFindings": ["5-8 specific findings, each with a concrete data point, percentage, or named company/product"],
-  "trendingTopics": ["3-5 short topic labels (2-4 words each)"],
-  "notableStats": ["up to 6 specific numbers, percentages, or dollar amounts extracted from the news"],
-  "sources": [{ "title": "article title", "url": "source url", "publication": "publication name" }]
+  "headline": "The single most important market insight this week (10-15 words, bold claim backed by data)",
+  "marketMovement": "One sentence describing the overall direction the B2B sales + AI market is moving this week",
+  "keyFindings": [
+    {
+      "signal": "What happened — specific, with company name or data point",
+      "soWhat": "Why this matters strategically to B2B sales teams (1 sharp sentence)",
+      "nowWhat": "Specific action or watch item this week (verb-led, 1 sentence)",
+      "tier": "analyst|vendor|media",
+      "velocity": "hot|rising|stable",
+      "publication": "source publication name"
+    }
+  ],
+  "trendingTopics": ["3-5 concise topic labels (2-4 words each) representing the dominant themes"],
+  "notableStats": ["up to 6 precise statistics with source context — format: 'stat — source (context)'"],
+  "marketRisks": ["2-3 specific risks or threats B2B sales teams should watch this week"],
+  "sources": [{ "title": "article title", "url": "source url", "publication": "publication name", "tier": "analyst|vendor|media" }]
 }
 
-Return ONLY the JSON object. No markdown, no explanation.`
+Aim for 5-8 key findings. Return ONLY the JSON object. No markdown, no explanation.`
 
-        const redditPrompt = `You are analyzing ${redditTrends.length} Reddit posts from B2B sales, SaaS, and startup subreddits this week.
+        const redditPrompt = `You are a practitioner intelligence analyst studying ${redditTrends.length} Reddit posts from B2B sales communities for the week of ${weekLabel}.
 
-REDDIT POSTS (format: subreddit | upvotes, comments — title: summary):
+Your job: Extract what real practitioners (sales reps, SDRs, AEs, RevOps professionals) actually think, struggle with, and debate — not vendor messaging.
+
+REDDIT POSTS (format: r/subreddit | ↑upvotes 💬comments [engagement score] — title: summary):
 ${redditContext || "No Reddit posts found this week."}
 
-Extract community intelligence. Return ONLY valid JSON:
+Total community engagement: ${totalUpvotes} upvotes, ${totalComments} comments across ${redditTrends.length} posts.
+
+SIGNAL/NOISE FILTER: Weight posts by engagement score (upvotes × 2 + comments × 3). Treat low-engagement posts (<10 score) as weak signal unless the topic is uniquely specific.
+PRACTITIONER FILTER: Distinguish practitioner voices (reps, managers, RevOps) from vendor/affiliate content. Weight practitioner voices 3× higher.
+
+For each pain point, find EVIDENCE: which discussion(s) support it, and quote or paraphrase a specific practitioner voice if possible.
+
+Return ONLY valid JSON:
 {
-  "headline": "bold 8-12 word claim about what practitioners are actually saying this week",
-  "communityPainPoints": ["4-6 specific pain points that practitioners are complaining about or struggling with — be specific, not generic"],
-  "topDiscussions": [
-    { "title": "post title (truncated to 80 chars)", "upvotes": 0, "comments": 0, "url": "reddit url or empty string" }
+  "headline": "The dominant practitioner sentiment this week (10-15 words — what practitioners are ACTUALLY saying)",
+  "overallSentiment": "positive|neutral|negative|mixed",
+  "sentimentDriver": "One sentence explaining WHY practitioners feel this way this week (specific reason, not generic)",
+  "communityPainPoints": [
+    {
+      "painPoint": "Specific pain point — concrete, not generic (e.g., 'AI-generated cold emails are getting 1% reply rates' not 'outreach is hard')",
+      "evidence": "Which subreddit/discussion(s) support this",
+      "practitionerQuote": "A representative quote or close paraphrase from a practitioner (if available)"
+    }
   ],
-  "sentiment": "positive | neutral | negative | mixed",
-  "keyInsights": ["3-5 surprising or actionable insights from community discussions — things you wouldn't get from analyst reports"]
+  "subredditBreakdown": [
+    {
+      "name": "subreddit name without r/",
+      "postCount": number,
+      "dominantTheme": "what this community is focused on this week (1 sentence)"
+    }
+  ],
+  "topDiscussions": [
+    {
+      "title": "post title (max 80 chars)",
+      "upvotes": number,
+      "comments": number,
+      "url": "reddit url or empty string",
+      "whyItMatters": "one sentence on why this discussion is significant"
+    }
+  ],
+  "keyInsights": ["3-5 non-obvious insights you'd ONLY learn from practitioners — things absent from analyst reports"],
+  "buyerSignals": ["2-3 signals about how B2B buyers are thinking or behaving differently this week"]
 }
 
-Include top 5 discussions by engagement. Return ONLY the JSON object.`
+Include top 5 discussions by engagement. Return ONLY the JSON object. No markdown, no explanation.`
 
-        const harveyPrompt = `Harvey is an AI copilot for B2B sales teams that closes the full loop: prospecting, outreach, follow-up, and pipeline management in one place. Harvey's competitors: Salesloft, Apollo, Clay, Lemlist.
+        const harveyPrompt = `You are a competitive strategy advisor writing a market intelligence brief for Harvey, an AI copilot for B2B sales.
 
-This week's market findings:
-WEB: ${webTrends.slice(0, 5).map((t) => t.title).join("; ")}
-REDDIT PAIN POINTS: practitioners struggling with AI adoption, outreach personalization, pipeline visibility (inferred from ${redditTrends.length} posts)
+Harvey's value proposition: Closes the full B2B sales loop — prospecting, personalized outreach, follow-up sequences, and pipeline management — in one AI-native platform.
+Harvey's direct competitors: Salesloft, Apollo, Clay, Lemlist.
 
-Based on these market findings, explain how Harvey directly addresses each trend and pain point. Return ONLY valid JSON:
+THIS WEEK'S MARKET INTELLIGENCE:
+
+Web market headline: ${webTrends.slice(0, 1).map((t) => t.title).join("")}
+Market movement: (synthesized from ${webTrends.length} signals)
+Top market signals:
+${webTrends.slice(0, 6).map((t) => `• [${inferSourceTier(t.source_url)}] ${t.title}: ${truncate(t.summary ?? "", 150)}`).join("\n")}
+
+Community intelligence:
+• ${redditTrends.length} Reddit posts from B2B sales communities
+• Community engagement: ${totalUpvotes} upvotes, ${totalComments} comments
+• Top discussions: ${redditTrends.slice(0, 3).map((t) => t.title).join("; ")}
+
+Your task: Provide a strategic brief explaining Harvey's competitive position relative to this week's market movements. Be SPECIFIC — connect actual findings to Harvey's actual capabilities. Avoid generic "Harvey helps sales teams" language.
+
+Return ONLY valid JSON:
 {
-  "headline": "bold statement of Harvey's relevance to this week's market movements (8-12 words)",
-  "relevancePoints": ["4-6 specific points connecting Harvey's capabilities to specific findings from the news/reddit. Be concrete — name the specific trend and the specific Harvey feature that addresses it."],
-  "callToAction": "one compelling sentence inviting B2B sales leaders to explore Harvey"
-}`
+  "headline": "Harvey's strategic position this week (10-15 words — confident, specific, grounded in the week's findings)",
+  "marketOpportunity": "The single biggest opportunity for Harvey this week based on specific market movements",
+  "competitiveContext": "How the competitive landscape shifted this week — specific competitor moves or market positioning changes (or note if no major shifts detected)",
+  "relevancePoints": [
+    {
+      "finding": "The specific market signal or practitioner pain point",
+      "harveyAdvantage": "Why Harvey is specifically positioned to win here — concrete, not generic",
+      "urgency": "high|medium|low",
+      "talkingPoint": "A one-line message Harvey reps should use in outreach or demos this week"
+    }
+  ],
+  "winConditions": ["2-3 specific account or deal scenarios where Harvey wins decisively this week"],
+  "threatSignals": ["1-2 competitive threats or market moves Harvey should monitor"],
+  "callToAction": "One compelling sentence for B2B sales leaders evaluating AI sales tools this week"
+}
+
+Aim for 4-6 relevance points. Return ONLY the JSON object. No markdown, no explanation.`
 
         const [webRaw, redditRaw, harveyRaw] = await Promise.all([
-          generatePosts(systemPrompt, webPrompt, provider).catch(() => "{}"),
-          generatePosts(systemPrompt, redditPrompt, provider).catch(() => "{}"),
-          generatePosts(systemPrompt, harveyPrompt, provider).catch(() => "{}"),
+          generatePosts(systemPrompt, webPrompt, provider).catch(() => ""),
+          generatePosts(systemPrompt, redditPrompt, provider).catch(() => ""),
+          generatePosts(systemPrompt, harveyPrompt, provider).catch(() => ""),
         ])
 
-        send(controller, { type: "progress", stage: "reddit", message: "Analyzing Reddit pulse…" })
+        send(controller, { type: "progress", stage: "reddit", message: "Analyzing community intelligence…" })
 
-        // Parse AI results
-        const parseJson = (raw: string, fallback: object) => {
-          try {
-            const match = raw.match(/\{[\s\S]*\}/)
-            return match ? JSON.parse(match[0]) : fallback
-          } catch {
-            return fallback
-          }
-        }
-
-        const webSynthesis = parseJson(webRaw, {
+        // Parse AI results with typed fallbacks
+        const webSynthesisFallback = {
           headline: "AI is reshaping B2B sales this week",
-          keyFindings: webTrends.slice(0, 6).map((t) => t.title),
+          marketMovement: "The market is consolidating around AI-native workflows for B2B sales teams.",
+          keyFindings: webTrends.slice(0, 6).map((t) => ({
+            signal: t.title,
+            soWhat: truncate(t.summary ?? "Market shift in progress.", 120),
+            nowWhat: "Monitor this development and assess impact on your pipeline.",
+            tier: inferSourceTier(t.source_url),
+            velocity: t.velocity ?? "stable",
+            publication: inferPublication(t.source_url),
+          })) as WebFinding[],
           trendingTopics: ["AI Sales", "B2B Outreach", "Pipeline AI"],
           notableStats: [],
+          marketRisks: ["Rapid AI adoption compressing competitive differentiation windows."],
           sources: webTrends.slice(0, 8).filter((t) => t.source_url).map((t) => ({
             title: t.title,
             url: t.source_url,
             publication: inferPublication(t.source_url),
+            tier: inferSourceTier(t.source_url),
           })),
-        })
+        }
 
-        const redditPulse = parseJson(redditRaw, {
-          headline: "Practitioners are debating AI adoption in sales",
-          communityPainPoints: redditTrends.slice(0, 5).map((t) => t.title),
+        const redditFallback = {
+          headline: "Practitioners are debating AI adoption effectiveness in B2B sales",
+          overallSentiment: "mixed",
+          sentimentDriver: "Sales practitioners see AI potential but struggle with implementation quality and trust.",
+          communityPainPoints: redditTrends.slice(0, 5).map((t) => ({
+            painPoint: t.title,
+            evidence: `r/${t.source_url?.match(/reddit\.com\/r\/([^/]+)/)?.[1] ?? "sales"} discussion`,
+            practitionerQuote: truncate(t.summary ?? "", 100),
+          })) as PainPoint[],
+          subredditBreakdown: [],
           topDiscussions: redditTrends.slice(0, 5).map((t) => ({
             title: t.title,
             upvotes: t.upvotes ?? 0,
             comments: t.comments ?? 0,
             url: t.source_url ?? "",
+            whyItMatters: "High community engagement signals this is a live practitioner concern.",
           })),
-          sentiment: "mixed",
+          sentiment: "mixed" as const,
           keyInsights: [],
-        })
+          buyerSignals: [],
+        }
 
-        const harveyAngle = parseJson(harveyRaw, {
-          headline: "Harvey addresses this week's biggest B2B sales challenges",
-          relevancePoints: ["Harvey automates the full sales loop — from prospecting to pipeline management"],
-          callToAction: "See how Harvey can transform your B2B sales workflow.",
-        })
+        const harveyFallback = {
+          headline: "Harvey addresses this week's biggest B2B sales intelligence gaps",
+          marketOpportunity: "AI adoption gap between early movers and laggards creates a prime window for Harvey's full-loop approach.",
+          competitiveContext: "No major competitor shifts detected this week — market positioning stable.",
+          relevancePoints: [
+            {
+              finding: "Practitioners struggling with AI-generated outreach quality and reply rates",
+              harveyAdvantage: "Harvey's full-loop approach means outreach is informed by pipeline context, not isolated prompts",
+              urgency: "high" as const,
+              talkingPoint: "Unlike point solutions, Harvey connects every outreach to live pipeline data for contextual personalization.",
+            },
+          ],
+          winConditions: ["Accounts evaluating multiple point solutions (Apollo + Lemlist + CRM) — Harvey replaces the stack"],
+          threatSignals: ["Incumbent CRM vendors adding AI features to existing deals"],
+          callToAction: "See how Harvey closes the full B2B sales loop where fragmented tools fall short.",
+        }
 
-        send(controller, { type: "progress", stage: "harvey", message: "Building Harvey angle…" })
+        const webSynthesis = parseJson(webRaw, webSynthesisFallback)
+        const redditPulse = parseJson(redditRaw, redditFallback)
+        const harveyAngle = parseJson(harveyRaw, harveyFallback)
+
+        send(controller, { type: "progress", stage: "harvey", message: "Building strategic implications…" })
+
+        // 5. Sequential executive synthesis call
+        send(controller, { type: "progress", stage: "executive", message: "Writing executive summary…" })
+
+        const execPrompt = `You are writing an executive summary for a B2B sales market intelligence report covering the week of ${weekLabel}.
+
+Your audience: CRO, VP Sales, and RevOps leaders. They have 60 seconds. Make it count.
+
+DATA FROM THIS WEEK:
+
+WEB MARKET INTELLIGENCE:
+Headline: ${webSynthesis.headline}
+Market movement: ${webSynthesis.marketMovement ?? ""}
+Top findings:
+${(webSynthesis.keyFindings ?? []).slice(0, 4).map((f: WebFinding | string) =>
+  typeof f === "string" ? f : `• ${f.signal} → ${f.soWhat} → ${f.nowWhat}`
+).join("\n")}
+Market risks: ${(webSynthesis.marketRisks ?? []).join("; ")}
+
+COMMUNITY INTELLIGENCE:
+Headline: ${redditPulse.headline}
+Practitioner sentiment: ${redditPulse.overallSentiment ?? redditPulse.sentiment} — ${redditPulse.sentimentDriver ?? ""}
+Top pain points: ${(redditPulse.communityPainPoints ?? []).slice(0, 3).map((p: PainPoint | string) =>
+  typeof p === "string" ? p : p.painPoint
+).join("; ")}
+Buyer signals: ${(redditPulse.buyerSignals ?? []).join("; ")}
+
+STRATEGIC IMPLICATIONS:
+Harvey headline: ${harveyAngle.headline}
+Market opportunity: ${harveyAngle.marketOpportunity ?? ""}
+Top win conditions: ${(harveyAngle.winConditions ?? []).join("; ")}
+
+Apply the MECE principle (mutually exclusive, collectively exhaustive). Lead with the single most important insight. Close with the single most important action.
+Prioritize findings by revenue impact. Be specific — no generic observations.
+
+Return ONLY valid JSON:
+{
+  "headline": "The single most important market insight this week (12-16 words — bold, specific claim)",
+  "executiveOverview": "2-3 sentences a CRO reads in 30 seconds. What happened, why it matters, what to do. No fluff.",
+  "criticalFindings": [
+    {
+      "finding": "Concise statement of finding (1 sentence, specific)",
+      "implication": "Revenue/strategic implication for B2B sales leaders (1 sentence, concrete)"
+    }
+  ],
+  "marketOutlook": "Where the B2B sales + AI market is heading in the next 30-60 days (2-3 sentences, forward-looking)",
+  "topRecommendation": "The single most important action for B2B sales leaders this week (verb-led, specific)",
+  "recommendations": [
+    {
+      "action": "Specific action (verb-led, concrete)",
+      "rationale": "Why this matters now (1 sentence)",
+      "timeframe": "this week|this month|this quarter",
+      "priority": "critical|high|medium"
+    }
+  ],
+  "signalStrength": "strong|moderate|weak",
+  "signalStrengthReason": "One sentence on why the signal is strong/moderate/weak this week (based on data volume and quality)"
+}
+
+Aim for exactly 3 critical findings and 3-4 recommendations. Return ONLY the JSON object. No markdown.`
+
+        const execRaw = await generatePosts(systemPrompt, execPrompt, provider).catch(() => "")
+
+        const execFallback = {
+          headline: `${webSynthesis.headline}`,
+          executiveOverview: `${webSynthesis.marketMovement ?? "The B2B sales AI market continues to evolve rapidly this week."} Practitioners show ${redditPulse.overallSentiment ?? redditPulse.sentiment} sentiment around adoption. ${harveyAngle.marketOpportunity ?? "Key opportunities exist for AI-native platforms."}`,
+          criticalFindings: [
+            {
+              finding: webSynthesis.headline,
+              implication: "B2B sales teams that delay AI integration risk falling behind in pipeline velocity.",
+            },
+            {
+              finding: redditPulse.headline,
+              implication: "Practitioner friction signals an adoption gap that informed vendors can exploit.",
+            },
+            {
+              finding: harveyAngle.headline,
+              implication: harveyAngle.marketOpportunity ?? "The window for AI sales platform differentiation remains open.",
+            },
+          ],
+          marketOutlook: "AI-native sales tools are moving from novelty to competitive necessity. Teams adopting full-loop AI platforms this quarter will see measurable pipeline advantages within 60-90 days.",
+          topRecommendation: "Audit your current AI sales stack for gaps and evaluate full-loop alternatives before Q3 planning cycles lock in.",
+          recommendations: [
+            { action: "Review AI tool adoption rates across your team", rationale: "Practitioner resistance is early signal of stack fit issues", timeframe: "this week" as const, priority: "critical" as const },
+            { action: "Identify accounts showing buying committee expansion signals", rationale: webSynthesis.headline, timeframe: "this week" as const, priority: "high" as const },
+            { action: "Update competitive battlecards with this week's market movements", rationale: "Competitive context shifts require messaging updates", timeframe: "this month" as const, priority: "medium" as const },
+          ],
+          signalStrength: webTrends.length > 10 ? "strong" : webTrends.length > 4 ? "moderate" : "weak" as "strong" | "moderate" | "weak",
+          signalStrengthReason: `Based on ${webTrends.length} web signals and ${redditTrends.length} community discussions this week.`,
+        }
+
+        const executiveSummary = parseJson(execRaw, execFallback)
 
         const digest: DigestResult = {
           weekRange: weekLabel,
@@ -218,12 +463,13 @@ Based on these market findings, explain how Harvey directly addresses each trend
           redditCount: redditTrends.length,
           totalComments,
           totalUpvotes,
+          executiveSummary,
           webSynthesis,
           redditPulse,
           harveyAngle,
         }
 
-        // Save to Supabase (best-effort — don't block the stream if table doesn't exist yet)
+        // Save to Supabase (best-effort)
         let digestId: string | null = null
         try {
           const { data: saved } = await supabase
@@ -233,7 +479,7 @@ Based on these market findings, explain how Harvey directly addresses each trend
               generated_at: digest.generatedAt,
               web_count: digest.webCount,
               reddit_count: digest.redditCount,
-              headline: digest.webSynthesis.headline,
+              headline: digest.executiveSummary.headline,
               digest_json: digest,
             })
             .select("id")

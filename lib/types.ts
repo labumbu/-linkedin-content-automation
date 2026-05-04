@@ -32,6 +32,41 @@ export interface DigestSource {
   title: string
   url: string
   publication: string
+  tier?: "analyst" | "vendor" | "media"
+}
+
+export interface WebFinding {
+  signal: string
+  soWhat: string
+  nowWhat: string
+  tier: "analyst" | "vendor" | "media"
+  velocity?: "hot" | "rising" | "stable"
+  publication?: string
+}
+
+export interface PainPoint {
+  painPoint: string
+  evidence?: string
+  practitionerQuote?: string
+}
+
+export interface HarveyRelevancePoint {
+  finding: string
+  harveyAdvantage: string
+  urgency: "high" | "medium" | "low"
+  talkingPoint?: string
+}
+
+export interface Recommendation {
+  action: string
+  rationale: string
+  timeframe: "this week" | "this month" | "this quarter"
+  priority: "critical" | "high" | "medium"
+}
+
+export interface CriticalFinding {
+  finding: string
+  implication: string
 }
 
 export interface DigestResult {
@@ -41,23 +76,43 @@ export interface DigestResult {
   redditCount: number
   totalComments: number
   totalUpvotes: number
+  executiveSummary: {
+    headline: string
+    executiveOverview: string
+    criticalFindings: CriticalFinding[]
+    marketOutlook: string
+    topRecommendation: string
+    recommendations: Recommendation[]
+    signalStrength: "strong" | "moderate" | "weak"
+    signalStrengthReason: string
+  }
   webSynthesis: {
     headline: string
-    keyFindings: string[]
+    marketMovement?: string
+    keyFindings: WebFinding[] | string[]
     trendingTopics: string[]
     notableStats: string[]
+    marketRisks?: string[]
     sources: DigestSource[]
   }
   redditPulse: {
     headline: string
-    communityPainPoints: string[]
-    topDiscussions: { title: string; upvotes: number; comments: number; url: string }[]
+    overallSentiment?: string
+    sentimentDriver?: string
+    communityPainPoints: PainPoint[] | string[]
+    subredditBreakdown?: { name: string; postCount: number; dominantTheme: string }[]
+    topDiscussions: { title: string; upvotes: number; comments: number; url: string; whyItMatters?: string }[]
     sentiment: "positive" | "neutral" | "negative" | "mixed"
     keyInsights: string[]
+    buyerSignals?: string[]
   }
   harveyAngle: {
     headline: string
-    relevancePoints: string[]
+    marketOpportunity?: string
+    competitiveContext?: string
+    relevancePoints: HarveyRelevancePoint[] | string[]
+    winConditions?: string[]
+    threatSignals?: string[]
     callToAction: string
   }
 }
